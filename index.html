@@ -1974,6 +1974,18 @@
         "/audio/track6.mp3"
       ];
 
+      function resolveAudioPath(url) {
+        if (!url) return "";
+        if (url.indexOf("http://") === 0 || url.indexOf("https://") === 0 || url.indexOf("blob:") === 0) {
+          return url;
+        }
+        var base = getCleanRedirectUri();
+        if (url.charAt(0) === '/') {
+          return base + url.substring(1);
+        }
+        return base + url;
+      }
+
       function isSnippetUrl(url) {
         if (!url) return false;
         var lower = url.toLowerCase();
@@ -1985,7 +1997,7 @@
 
       function getTrackAudioUrl(track, index) {
         if (track && track.preview_url && track.preview_url.length > 5 && !isSnippetUrl(track.preview_url)) {
-          return track.preview_url;
+          return resolveAudioPath(track.preview_url);
         }
         var idx = (typeof index === "number") ? index : 0;
         if (track && track.id) {
@@ -1995,7 +2007,8 @@
           }
           idx = sum;
         }
-        return localAudioUrls[Math.abs(idx) % localAudioUrls.length];
+        var path = localAudioUrls[Math.abs(idx) % localAudioUrls.length];
+        return resolveAudioPath(path);
       }
 
       // Seed data with real MP3 audio streams
