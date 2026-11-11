@@ -1,0 +1,88 @@
+[
+  {
+    "username": "muffin",
+    "displayName": "Muffin",
+    "salt": "36086f31350722568395de39deb8752c",
+    "passwordHash": "d8d861c7f76bf5ca8f29e5d5b5f31870d8b4f6461ae801560d128b03fe012a627e823aaea22bd16332e540ac2d2e82376168ec1fa800f4eec7df0431320e6876",
+    "sessionToken": "1c10e212547e9a3c0898f5d7289d1bf6b02317fa93263cb7",
+    "spotifyDisplayName": "Muffin",
+    "createdAt": "2026-11-11T18:29:05.563Z",
+    "updatedAt": "2026-11-11T18:29:05.564Z"
+  },
+  {
+    "username": "tester_1794421745562",
+    "displayName": "tester_1794421745562",
+    "salt": "072bfa74de0a0235f165d8787c81f9eb",
+    "passwordHash": "2d0300b7aef17c40acc30ff040dba534f2a49b0cd5c0c01ff54a6893295d7bb73334e70c812e25f5828f2d542f482ca752bb36f75d8302bff31210bc435df3cf",
+    "sessionToken": "d2af709bdba5b0d4905e26fb1a074be9e7b216536e4b6a21",
+    "createdAt": "2026-11-11T18:29:05.568Z",
+    "updatedAt": "2026-11-11T18:29:05.568Z"
+  },
+  {
+    "username": "unique_1794421745569",
+    "displayName": "unique_1794421745569",
+    "salt": "fe6de1ddb0fc968cbd38f0edfaa3da0f",
+    "passwordHash": "3c3dfd1ed0b31a20be019f93c6460926505eb4d7013be190d859f8d7138f93399064c0e19ebf3f4952cf0124beb01bb11286cf4bb1fdb9b982e5ee6018c94fac",
+    "sessionToken": "1496fdfb55d1e55b0612c58cb6d677a99bbcc38ca6c92aaa",
+    "createdAt": "2026-11-11T18:29:05.570Z",
+    "updatedAt": "2026-11-11T18:29:05.570Z"
+  },
+  {
+    "username": "auth_test_1794421745571",
+    "displayName": "auth_test_1794421745571",
+    "salt": "783200c5eb1ff36f79de632189b25148",
+    "passwordHash": "65a186e3a25e5909ee6309e1e5ffca8c28e7cc1d7ae3321b0db57f8b8d291426b0268cdec4385b0075eaea51f2991bb901582f71dae643c6f656dae73a473ca9",
+    "sessionToken": "e3a7eb9e023ba391f1f66be074be5fda71d26c6a84e0ef7c",
+    "createdAt": "2026-11-11T18:29:05.571Z",
+    "updatedAt": "2026-11-11T18:29:05.573Z"
+  },
+  {
+    "username": "spotify_sync_1794421745574",
+    "displayName": "spotify_sync_1794421745574",
+    "salt": "ff13e2930808c45e7f69a45186fead90",
+    "passwordHash": "a8e7d7015bdeaa01b98b79cce51c3ee8da00d471f7cfa35b2a6bbf19528041776d92405b9236633f2bb50628271345524dc7675971219bef985ff75d8089da9c",
+    "sessionToken": "c2d8d354ae667ced67a36f14e083eb3e8bed765dfd9db72f",
+    "spotifyToken": "BQD_mock_spotify_token_xyz",
+    "createdAt": "2026-11-11T18:29:05.574Z",
+    "updatedAt": "2026-11-11T18:29:05.575Z",
+    "spotifyDisplayName": "Muffin"
+  },
+  {
+    "username": "tester_1794421755480",
+    "displayName": "tester_1794421755480",
+    "salt": "e9edfaf0b832a3b6c1f06450220eeb6a",
+    "passwordHash": "1c81ef99d53fe47f7319c11cb885b11a25d1e093d47f6ea603c9898ceb3813ef07e762afa5d98f41001b832ce11f66931dc2e085dadd3d2fe157644eed6f5d7a",
+    "sessionToken": "b72d5ba99583994fc4eb14b21248c222b6755c287a361105",
+    "createdAt": "2026-11-11T18:29:15.481Z",
+    "updatedAt": "2026-11-11T18:29:15.481Z"
+  },
+  {
+    "username": "unique_1794421755482",
+    "displayName": "unique_1794421755482",
+    "salt": "265342a70317cec716cbc8d1f70936ed",
+    "passwordHash": "e1107616e3c17c4dbb0865acacaf072d9129d5b4421743f7a3633a4df4dd85c285d5a95242862e203b9f88bb30936bf1939a3eecd8c3eba662ff86d93890693a",
+    "sessionToken": "3fba110570dbb03caacb1a3f72ff8f76d591173dc7ca9b0f",
+    "createdAt": "2026-11-11T18:29:15.483Z",
+    "updatedAt": "2026-11-11T18:29:15.483Z"
+  },
+  {
+    "username": "auth_test_1794421755484",
+    "displayName": "auth_test_1794421755484",
+    "salt": "40f38ec66a345c4947faea3de2484ff0",
+    "passwordHash": "bd1413f91b807fd3be0b3fdf799a728d03b63ddd5c1a945e96060c07593ba3c586bb73e8ce4faa5a364fe56d651df8fb0dbb1669368aeb97301f3082eb2ced8d",
+    "sessionToken": "8535a853c1edf491f566450f3c2e3f04d05c0ee42df8bf7b",
+    "createdAt": "2026-11-11T18:29:15.484Z",
+    "updatedAt": "2026-11-11T18:29:15.486Z"
+  },
+  {
+    "username": "spotify_sync_1794421755486",
+    "displayName": "spotify_sync_1794421755486",
+    "salt": "0abd2ed08d77e4be5fc1053035de46b6",
+    "passwordHash": "3b1b576a385b2201cdc491e3f775c6e9a9065ca2780f5022bb22b29a9ff867788545abcd9a3e66b83de46552270fb675f4dbbf973f138dc7c5d6893ef6fea092",
+    "sessionToken": "7a4b2e8b195f79d0158c6430ebb341f044138574c19fbb26",
+    "spotifyToken": "BQD_mock_spotify_token_xyz",
+    "createdAt": "2026-11-11T18:29:15.487Z",
+    "updatedAt": "2026-11-11T18:29:15.488Z",
+    "spotifyDisplayName": "Muffin"
+  }
+]

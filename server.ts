@@ -2,6 +2,12 @@ import express, { Request, Response } from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import {
+  registerUser,
+  authenticateUser,
+  linkSpotifyToken,
+  getUserByUsername
+} from './src/db/userDb.js';
 
 dotenv.config();
 
@@ -45,6 +51,7 @@ interface PairingRecord {
   code: string;
   status: 'pending' | 'paired';
   accessToken?: string;
+  username?: string;
   createdAt: number;
 }
 
@@ -60,15 +67,59 @@ function generateCode(): string {
 }
 
 // -------------------------------------------------------------
+// API: Account Registration & Cross-Device Authentication
+// -------------------------------------------------------------
+app.post('/api/account/signup', (req: Request, res: Response) => {
+  const { username, password, spotify_token } = req.body || {};
+  const result = registerUser(username, password, spotify_token);
+  if (!result.success) {
+    return res.status(400).json({ error: result.error });
+  }
+  return res.json(result);
+});
+
+app.post('/api/account/login', (req: Request, res: Response) => {
+  const { username, password } = req.body || {};
+  const result = authenticateUser(username, password);
+  if (!result.success) {
+    return res.status(401).json({ error: result.error });
+  }
+  return res.json(result);
+});
+
+app.post('/api/account/link-spotify', (req: Request, res: Response) => {
+  const { username, spotify_token, display_name } = req.body || {};
+  if (!username || !spotify_token) {
+    return res.status(400).json({ error: 'Missing username or spotify_token' });
+  }
+  const result = linkSpotifyToken(username, spotify_token, display_name);
+  if (!result.success) {
+    return res.status(404).json({ error: result.error });
+  }
+  return res.json(result);
+});
+
+app.get('/api/account/me', (req: Request, res: Response) => {
+  const username = (req.query.username || '').toString();
+  const user = getUserByUsername(username);
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+  return res.json({ success: true, user });
+});
+
+// -------------------------------------------------------------
 // API: Pairing Lifecycle
 // -------------------------------------------------------------
 
 // 1. Generate new 6-character pairing code
 app.get('/api/pair/new', (req: Request, res: Response) => {
   const code = generateCode();
+  const username = (req.query.username || '').toString().toLowerCase();
   pairingStore.set(code, {
     code,
     status: 'pending',
+    username: username || undefined,
     createdAt: Date.now()
   });
   return res.json({ pairing_code: code, code });
@@ -130,14 +181,22 @@ app.post('/api/pair/approve', async (req: Request, res: Response) => {
     }
   }
 
+  const existing = pairingStore.get(code);
+  const username = (req.body.username || existing?.username || '').toString().toLowerCase();
+
   pairingStore.set(code, {
     code,
     status: 'paired',
     accessToken: token,
+    username: username || undefined,
     createdAt: Date.now()
   });
 
-  return res.json({ success: true, code, status: 'paired', access_token: token });
+  if (username) {
+    linkSpotifyToken(username, token);
+  }
+
+  return res.json({ success: true, code, status: 'paired', access_token: token, username });
 });
 
 // -------------------------------------------------------------
@@ -919,12 +978,18 @@ app.get('/callback', async (req: Request, res: Response) => {
 
     if (tokenData.access_token) {
       if (pairingCode) {
+        const existing = pairingStore.get(pairingCode);
+        const username = existing?.username;
         pairingStore.set(pairingCode, {
           code: pairingCode,
           status: 'paired',
           accessToken: tokenData.access_token,
+          username,
           createdAt: Date.now()
         });
+        if (username) {
+          linkSpotifyToken(username, tokenData.access_token);
+        }
       }
 
       // If user came directly from iPhone, redirect back with hash token

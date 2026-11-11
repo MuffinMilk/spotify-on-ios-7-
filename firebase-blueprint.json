@@ -1,0 +1,47 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User account with linked Spotify credentials for cross-device authentication",
+      "type": "object",
+      "properties": {
+        "username": {
+          "type": "string",
+          "description": "Unique username for login",
+          "minLength": 3,
+          "maxLength": 50
+        },
+        "passwordHash": {
+          "type": "string",
+          "description": "Salted hash of user password",
+          "maxLength": 256
+        },
+        "spotifyToken": {
+          "type": "string",
+          "description": "Linked Spotify access token for seamless streaming",
+          "maxLength": 1024
+        },
+        "spotifyDisplayName": {
+          "type": "string",
+          "description": "Spotify user display name",
+          "maxLength": 100
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "ISO timestamp of account creation"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "ISO timestamp of last update"
+        }
+      },
+      "required": ["username", "passwordHash"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile and linked Spotify tokens for cross-device synchronization"
+    }
+  }
+}

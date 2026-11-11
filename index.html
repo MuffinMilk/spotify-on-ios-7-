@@ -1310,6 +1310,7 @@
       <!-- ============================================== -->
       <div class="screen-view active" id="view-pair">
         <div class="ios7-nav-bar">
+          <button class="nav-btn" onclick="openAccountModal()" id="pair-nav-account-btn" style="color:#1db954; font-size:12px;">👤 Sign In</button>
           <div class="nav-title">Pair Device</div>
           <button class="nav-btn" onclick="openDirectTokenModal()">Token</button>
         </div>
@@ -1324,6 +1325,10 @@
 
             <h1 class="pair-title">Connect Xpotify</h1>
             <p class="pair-subtitle">Pair your iPhone 5 with your Spotify account to enable seamless music streaming.</p>
+
+            <div id="pair-account-banner" onclick="openAccountModal()" style="font-size: 11px; color: #1db954; background: rgba(29, 185, 84, 0.12); border: 1px solid rgba(29, 185, 84, 0.3); border-radius: 8px; padding: 6px 12px; margin-bottom: 12px; cursor: pointer; display: none;">
+              👤 Account: <strong id="pair-account-name">Muffin</strong> • Tap to manage
+            </div>
 
             <!-- 6-character Code Display -->
             <div class="pairing-code-card">
@@ -1380,21 +1385,21 @@
         <div class="ios7-nav-bar">
           <button class="nav-btn text-muted" onclick="openSettingsModal()">⚙</button>
           <div class="nav-title">My Library</div>
-          <button class="nav-btn" onclick="openDirectTokenModal()">Token</button>
+          <button class="nav-btn" onclick="openAccountModal()" id="library-nav-account-btn" style="color:#1db954; font-size:12px;">👤 Sign In</button>
         </div>
 
         <div class="ios7-scroll-body with-player">
-          <!-- User Profile mini row -->
+          <!-- User Profile & Account mini row -->
           <div class="ios7-table-view" style="margin-top: 12px;">
-            <div class="ios7-cell" onclick="openSettingsModal()">
-              <div class="cell-icon" style="background:#242426; color:#ffffff;">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                  <circle cx="12" cy="7" r="4"></circle>
-                </svg>
+            <div class="ios7-cell" onclick="openAccountModal()">
+              <div class="cell-icon" style="background:#1db954; color:#000000; font-size: 13px; line-height: 28px; text-align: center;">
+                👤
               </div>
-              <div class="cell-title" style="font-weight:400;" id="user-display-name">Spotify User</div>
-              <div class="cell-value" style="color:#1db954;">Connected</div>
+              <div class="cell-label" style="text-align:left; -webkit-box-flex:1; -webkit-flex:1; flex:1;">
+                <div class="cell-title" style="font-weight:400;" id="user-display-name">Account: Guest</div>
+                <div id="user-account-subtitle" style="font-size:10px; color:#8e8e93;">Tap to Sign In & Sync Spotify</div>
+              </div>
+              <div class="cell-value" id="user-spotify-sync-badge" style="color:#1db954;">Synced</div>
               <div class="cell-chevron">›</div>
             </div>
           </div>
@@ -1689,6 +1694,112 @@
           <span class="tab-label">Radio</span>
         </button>
       </nav>
+
+      <!-- ============================================== -->
+      <!-- MODAL: ACCOUNT SIGN IN / SIGN UP (DATABASE)    -->
+      <!-- ============================================== -->
+      <div class="ios7-alert-backdrop" id="modal-account">
+        <div class="ios7-alert-box" style="width: 290px; text-align: center;">
+          <div class="alert-header">
+            <div class="alert-title" id="account-modal-title">Xpotify Account</div>
+            <div class="alert-message" id="account-modal-desc" style="margin-bottom: 8px;">
+              Sign in or create an account. Your Spotify connection will sync automatically to any phone or computer!
+            </div>
+
+            <!-- Signed In View (shown if already logged in) -->
+            <div id="account-logged-in-view" style="display: none; text-align: left; background: #141416; border: 1px solid #282828; border-radius: 8px; padding: 10px; margin-bottom: 8px;">
+              <div style="font-size: 13px; font-weight: 500; color: #ffffff; margin-bottom: 4px;">
+                👤 <span id="account-active-username">Muffin</span>
+              </div>
+              <div id="account-spotify-status-badge" style="font-size: 11px; color: #1db954; margin-bottom: 6px;">
+                ✓ Spotify Connected
+              </div>
+              <div style="font-size: 10px; color: #8e8e93; line-height: 1.35;">
+                Your Spotify connection is saved in the database. Logging in on any phone or laptop will automatically load your music!
+              </div>
+            </div>
+
+            <!-- Form View (shown if logging in / signing up) -->
+            <div id="account-form-view" style="text-align: left;">
+              <div style="display: -webkit-box; display: -webkit-flex; display: flex; margin-bottom: 10px; border: 1px solid #1db954; border-radius: 6px; overflow: hidden;">
+                <button type="button" id="tab-btn-signin" onclick="setAccountMode('signin')" style="flex:1; -webkit-flex:1; background: #1db954; color: #000; border: none; padding: 6px 0; font-size: 11px; font-weight: 600; cursor: pointer;">Sign In</button>
+                <button type="button" id="tab-btn-signup" onclick="setAccountMode('signup')" style="flex:1; -webkit-flex:1; background: transparent; color: #1db954; border: none; padding: 6px 0; font-size: 11px; font-weight: 400; cursor: pointer;">Sign Up</button>
+              </div>
+
+              <label style="font-size: 11px; color: #8e8e93; display: block; margin-bottom: 2px;">Username</label>
+              <input type="text" id="account-username-input" class="config-input" placeholder="e.g. muffin" autocapitalize="none" autocorrect="off" style="margin-bottom: 8px; font-size: 13px; padding: 6px 8px;">
+
+              <label style="font-size: 11px; color: #8e8e93; display: block; margin-bottom: 2px;">Password</label>
+              <input type="password" id="account-password-input" class="config-input" placeholder="Enter password" style="margin-bottom: 8px; font-size: 13px; padding: 6px 8px;">
+
+              <div id="account-feedback-msg" style="display: none; font-size: 11px; margin-bottom: 6px; line-height: 1.3;"></div>
+            </div>
+          </div>
+
+          <div class="alert-actions" id="account-actions-form">
+            <button class="alert-action-btn" onclick="closeAccountModal()" style="color: #8e8e93;">Cancel</button>
+            <button class="alert-action-btn" id="btn-account-submit" onclick="submitAccountForm()">Sign In</button>
+          </div>
+
+          <div class="alert-actions" id="account-actions-loggedin" style="display: none;">
+            <button class="alert-action-btn danger" onclick="signOutAccount()">Sign Out</button>
+            <button class="alert-action-btn" onclick="closeAccountModal()">Done</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============================================== -->
+      <!-- MODAL: ACCOUNT SIGN IN / SIGN UP (DATABASE)    -->
+      <!-- ============================================== -->
+      <div class="ios7-alert-backdrop" id="modal-account">
+        <div class="ios7-alert-box" style="width: 290px; text-align: center;">
+          <div class="alert-header">
+            <div class="alert-title" id="account-modal-title">Xpotify Account</div>
+            <div class="alert-message" id="account-modal-desc" style="margin-bottom: 8px;">
+              Sign in or create an account. Your Spotify connection will sync automatically to any phone or computer!
+            </div>
+
+            <!-- Signed In View (shown if already logged in) -->
+            <div id="account-logged-in-view" style="display: none; text-align: left; background: #141416; border: 1px solid #282828; border-radius: 8px; padding: 10px; margin-bottom: 8px;">
+              <div style="font-size: 13px; font-weight: 500; color: #ffffff; margin-bottom: 4px;">
+                👤 <span id="account-active-username">Muffin</span>
+              </div>
+              <div id="account-spotify-status-badge" style="font-size: 11px; color: #1db954; margin-bottom: 6px;">
+                ✓ Spotify Connected
+              </div>
+              <div style="font-size: 10px; color: #8e8e93; line-height: 1.35;">
+                Your Spotify connection is saved in the database. Logging in on any phone or laptop will automatically load your music!
+              </div>
+            </div>
+
+            <!-- Form View (shown if logging in / signing up) -->
+            <div id="account-form-view" style="text-align: left;">
+              <div style="display: -webkit-box; display: -webkit-flex; display: flex; margin-bottom: 10px; border: 1px solid #1db954; border-radius: 6px; overflow: hidden;">
+                <button type="button" id="tab-btn-signin" onclick="setAccountMode('signin')" style="flex:1; -webkit-flex:1; background: #1db954; color: #000; border: none; padding: 6px 0; font-size: 11px; font-weight: 600; cursor: pointer;">Sign In</button>
+                <button type="button" id="tab-btn-signup" onclick="setAccountMode('signup')" style="flex:1; -webkit-flex:1; background: transparent; color: #1db954; border: none; padding: 6px 0; font-size: 11px; font-weight: 400; cursor: pointer;">Sign Up</button>
+              </div>
+
+              <label style="font-size: 11px; color: #8e8e93; display: block; margin-bottom: 2px;">Username</label>
+              <input type="text" id="account-username-input" class="config-input" placeholder="e.g. muffin" autocapitalize="none" autocorrect="off" style="margin-bottom: 8px; font-size: 13px; padding: 6px 8px;">
+
+              <label style="font-size: 11px; color: #8e8e93; display: block; margin-bottom: 2px;">Password</label>
+              <input type="password" id="account-password-input" class="config-input" placeholder="Enter password" style="margin-bottom: 8px; font-size: 13px; padding: 6px 8px;">
+
+              <div id="account-feedback-msg" style="display: none; font-size: 11px; margin-bottom: 6px; line-height: 1.3;"></div>
+            </div>
+          </div>
+
+          <div class="alert-actions" id="account-actions-form">
+            <button class="alert-action-btn" onclick="closeAccountModal()" style="color: #8e8e93;">Cancel</button>
+            <button class="alert-action-btn" id="btn-account-submit" onclick="submitAccountForm()">Sign In</button>
+          </div>
+
+          <div class="alert-actions" id="account-actions-loggedin" style="display: none;">
+            <button class="alert-action-btn danger" onclick="signOutAccount()">Sign Out</button>
+            <button class="alert-action-btn" onclick="closeAccountModal()">Done</button>
+          </div>
+        </div>
+      </div>
 
       <!-- ============================================== -->
       <!-- MODAL: SPOTIFY CLIENT ID DIRECT LOGIN          -->
@@ -2031,6 +2142,19 @@
         // Check if returning from Spotify OAuth
         var hashToken = checkOAuthHash();
         var token = hashToken || safeStorage.get("access_token");
+        var username = safeStorage.get("username");
+
+        // Update UI if user is logged in
+        if (username) {
+          var nameEl = document.getElementById("user-display-name");
+          var subEl = document.getElementById("user-account-subtitle");
+          if (nameEl) nameEl.innerText = "Account: " + username;
+          if (subEl) subEl.innerText = "Tap to manage account";
+          document.getElementById("pair-nav-account-btn").innerText = "👤 " + username;
+          document.getElementById("library-nav-account-btn").innerText = "👤 " + username;
+          document.getElementById("pair-account-banner").style.display = "block";
+          document.getElementById("pair-account-name").innerText = username;
+        }
 
         if (token && token.length > 5) {
           showMainDashboard();
@@ -3451,6 +3575,122 @@
         safeStorage.remove("access_token");
         closeSettingsModal();
         showPairDeviceScreen();
+      };
+
+      // -----------------------------------------------------------------
+      // Account Management (Sign In / Sign Up)
+      // -----------------------------------------------------------------
+      var currentAccountMode = 'signin';
+
+      window.openAccountModal = function () {
+        document.getElementById("modal-account").className = "ios7-alert-backdrop show";
+        updateAccountModalUI();
+      };
+
+      window.closeAccountModal = function () {
+        document.getElementById("modal-account").className = "ios7-alert-backdrop";
+      };
+
+      window.setAccountMode = function (mode) {
+        currentAccountMode = mode;
+        updateAccountModalUI();
+      };
+
+      function updateAccountModalUI() {
+        var username = safeStorage.get("username");
+        if (username) {
+          document.getElementById("account-logged-in-view").style.display = "block";
+          document.getElementById("account-form-view").style.display = "none";
+          document.getElementById("account-actions-form").style.display = "none";
+          document.getElementById("account-actions-loggedin").style.display = "flex";
+          document.getElementById("account-active-username").innerText = username;
+          document.getElementById("account-modal-title").innerText = "Account Management";
+          document.getElementById("account-modal-desc").style.display = "none";
+          return;
+        }
+
+        document.getElementById("account-logged-in-view").style.display = "none";
+        document.getElementById("account-form-view").style.display = "block";
+        document.getElementById("account-actions-form").style.display = "flex";
+        document.getElementById("account-actions-loggedin").style.display = "none";
+        document.getElementById("account-modal-title").innerText = currentAccountMode === 'signin' ? "Sign In" : "Sign Up";
+        document.getElementById("account-modal-desc").style.display = "block";
+
+        var btnSignin = document.getElementById("tab-btn-signin");
+        var btnSignup = document.getElementById("tab-btn-signup");
+        var btnSubmit = document.getElementById("btn-account-submit");
+
+        if (currentAccountMode === 'signin') {
+          btnSignin.style.background = "#1db954";
+          btnSignin.style.color = "#000";
+          btnSignup.style.background = "transparent";
+          btnSignup.style.color = "#1db954";
+          btnSubmit.innerText = "Sign In";
+        } else {
+          btnSignin.style.background = "transparent";
+          btnSignin.style.color = "#1db954";
+          btnSignup.style.background = "#1db954";
+          btnSignup.style.color = "#000";
+          btnSubmit.innerText = "Sign Up";
+        }
+      }
+
+      window.submitAccountForm = function () {
+        var username = document.getElementById("account-username-input").value;
+        var password = document.getElementById("account-password-input").value;
+        var endpoint = currentAccountMode === 'signin' ? '/api/account/login' : '/api/account/signup';
+        var spotifyToken = safeStorage.get("access_token");
+
+        var xhr = new XMLHttpRequest();
+        xhr.open("POST", endpoint, true);
+        xhr.setRequestHeader("Content-Type", "application/json");
+        xhr.onreadystatechange = function () {
+          if (xhr.readyState === 4) {
+            var feedback = document.getElementById("account-feedback-msg");
+            feedback.style.display = "block";
+            try {
+              var res = JSON.parse(xhr.responseText);
+              if (xhr.status >= 200 && xhr.status < 300) {
+                feedback.style.color = "#1db954";
+                feedback.innerText = "Success!";
+                safeStorage.set("username", res.user.username);
+                if (res.sessionToken) safeStorage.set("session_token", res.sessionToken);
+                
+                // If logged in and have spotify token, link it
+                if (spotifyToken) {
+                  linkSpotifyAccount(res.user.username, spotifyToken, res.user.displayName);
+                } else {
+                  setTimeout(function() { closeAccountModal(); }, 1000);
+                }
+              } else {
+                feedback.style.color = "#ff3b30";
+                feedback.innerText = res.error || "Authentication failed";
+              }
+            } catch (e) {
+              feedback.style.color = "#ff3b30";
+              feedback.innerText = "Error connecting to server";
+            }
+          }
+        };
+        xhr.send(JSON.stringify({ username: username, password: password, spotify_token: spotifyToken }));
+      };
+
+      function linkSpotifyAccount(username, token, displayName) {
+        var xhr = new XMLHttpRequest();
+        xhr.open("POST", "/api/account/link-spotify", true);
+        xhr.setRequestHeader("Content-Type", "application/json");
+        xhr.send(JSON.stringify({ username: username, spotify_token: token, display_name: displayName }));
+        xhr.onreadystatechange = function () {
+          if (xhr.readyState === 4 && xhr.status === 200) {
+             closeAccountModal();
+          }
+        };
+      }
+
+      window.signOutAccount = function () {
+        safeStorage.remove("username");
+        safeStorage.remove("session_token");
+        closeAccountModal();
       };
 
       window.openDirectTokenModal = function () {
