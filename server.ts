@@ -273,6 +273,13 @@ app.get('/api/spotify/playlists', async (req: Request, res: Response) => {
   if (playlists.length === 0) {
     playlists = [
       {
+        id: 'pl_mf_doom',
+        name: 'mf doom',
+        owner: 'Muffin',
+        tracksCount: 20,
+        image: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300'
+      },
+      {
         id: 'pl_no_other_heart',
         name: 'No Other Heart',
         owner: 'Muffin',
