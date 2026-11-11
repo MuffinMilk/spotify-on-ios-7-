@@ -18,6 +18,22 @@
   <!-- Official Spotify Web Playback SDK for Web Speaker / Connect Mode -->
   <script src="https://sdk.scdn.co/spotify-player.js"></script>
 
+  <!-- Firebase SDKs -->
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+    import { getAuth } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+    import { getFirestore } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+
+    fetch('/firebase-applet-config.json')
+      .then(r => r.json())
+      .then(config => {
+        const app = initializeApp(config);
+        window.db = getFirestore(app, config.firestoreDatabaseId);
+        window.auth = getAuth(app);
+        console.log('Firebase initialized');
+      });
+  </script>
+
   <style>
     /* ----------------------------------------------------
        iOS 7.1.2 Safari Pure CSS (iPhone 5 320px Canvas)
@@ -3636,54 +3652,72 @@
       }
 
       window.submitAccountForm = function () {
-        var username = document.getElementById("account-username-input").value;
+        var username = document.getElementById("account-username-input").value.trim().toLowerCase();
         var password = document.getElementById("account-password-input").value;
-        var endpoint = currentAccountMode === 'signin' ? '/api/account/login' : '/api/account/signup';
+        var feedback = document.getElementById("account-feedback-msg");
         var spotifyToken = safeStorage.get("access_token");
 
-        var xhr = new XMLHttpRequest();
-        xhr.open("POST", endpoint, true);
-        xhr.setRequestHeader("Content-Type", "application/json");
-        xhr.onreadystatechange = function () {
-          if (xhr.readyState === 4) {
-            var feedback = document.getElementById("account-feedback-msg");
-            feedback.style.display = "block";
-            if (xhr.status >= 200 && xhr.status < 300) {
-              try {
-                var res = JSON.parse(xhr.responseText);
-                feedback.style.color = "#1db954";
-                feedback.innerText = "Success!";
-                safeStorage.set("username", res.user.username);
-                if (res.sessionToken) safeStorage.set("session_token", res.sessionToken);
-                
-                // If logged in and have spotify token, link it
-                if (spotifyToken) {
-                  linkSpotifyAccount(res.user.username, spotifyToken, res.user.displayName);
-                } else {
-                  setTimeout(function() { closeAccountModal(); }, 1000);
-                }
-              } catch (e) {
-                feedback.style.color = "#ff3b30";
-                feedback.innerText = "Server error";
-              }
-            } else {
-              feedback.style.color = "#ff3b30";
-              try {
-                var res = JSON.parse(xhr.responseText);
-                feedback.innerText = res.error || "Authentication failed";
-              } catch (e) {
-                feedback.innerText = "Authentication failed (Server error)";
-              }
-            }
-          }
-        };
-        xhr.onerror = function () {
-          var feedback = document.getElementById("account-feedback-msg");
+        if (!username || !password) {
           feedback.style.display = "block";
           feedback.style.color = "#ff3b30";
-          feedback.innerText = "Network error: Connection to server failed";
-        };
-        xhr.send(JSON.stringify({ username: username, password: password, spotify_token: spotifyToken }));
+          feedback.innerText = "Please enter username and password";
+          return;
+        }
+
+        var email = username + "@xpotify.local"; 
+        
+        feedback.style.display = "block";
+        feedback.style.color = "#8e8e93";
+        feedback.innerText = (currentAccountMode === 'signin' ? "Signing in..." : "Signing up...");
+
+        import('https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js').then(authMod => {
+          import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js').then(fsMod => {
+            var auth = window.auth;
+            var db = window.db;
+
+            if (currentAccountMode === 'signup') {
+              authMod.createUserWithEmailAndPassword(auth, email, password)
+                .then(userCredential => {
+                  return fsMod.setDoc(fsMod.doc(db, 'users', userCredential.user.uid), {
+                    username: username,
+                    spotifyToken: spotifyToken || null,
+                    createdAt: new Date().toISOString()
+                  }).then(() => {
+                    feedback.style.color = "#1db954";
+                    feedback.innerText = "Success!";
+                    safeStorage.set("username", username);
+                    setTimeout(function() { closeAccountModal(); }, 1000);
+                  });
+                })
+                .catch(err => {
+                  feedback.style.color = "#ff3b30";
+                  feedback.innerText = err.message;
+                });
+            } else {
+              authMod.signInWithEmailAndPassword(auth, email, password)
+                .then(userCredential => {
+                  if (spotifyToken) {
+                    return fsMod.updateDoc(fsMod.doc(db, 'users', userCredential.user.uid), {
+                      spotifyToken: spotifyToken
+                    }).then(() => {
+                      feedback.style.color = "#1db954";
+                      feedback.innerText = "Success!";
+                      safeStorage.set("username", username);
+                      setTimeout(function() { closeAccountModal(); }, 1000);
+                    });
+                  }
+                  feedback.style.color = "#1db954";
+                  feedback.innerText = "Success!";
+                  safeStorage.set("username", username);
+                  setTimeout(function() { closeAccountModal(); }, 1000);
+                })
+                .catch(err => {
+                  feedback.style.color = "#ff3b30";
+                  feedback.innerText = err.message;
+                });
+            }
+          });
+        });
       };
 
       function linkSpotifyAccount(username, token, displayName) {

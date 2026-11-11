@@ -2,13 +2,6 @@ import express, { Request, Response } from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import {
-  registerUser,
-  authenticateUser,
-  linkSpotifyToken,
-  getUserByUsername
-} from './src/db/userDb.js';
-
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
@@ -65,52 +58,6 @@ function generateCode(): string {
   }
   return code;
 }
-
-// -------------------------------------------------------------
-// API: Account Registration & Cross-Device Authentication
-// -------------------------------------------------------------
-app.post('/api/account/signup', (req: Request, res: Response) => {
-  console.log('Signup attempt:', req.body.username);
-  const { username, password, spotify_token } = req.body || {};
-  const result = registerUser(username, password, spotify_token);
-  if (!result.success) {
-    console.error('Signup failed:', result.error);
-    return res.status(400).json({ error: result.error });
-  }
-  return res.json(result);
-});
-
-app.post('/api/account/login', (req: Request, res: Response) => {
-  console.log('Login attempt:', req.body.username);
-  const { username, password } = req.body || {};
-  const result = authenticateUser(username, password);
-  if (!result.success) {
-    console.error('Login failed:', result.error);
-    return res.status(401).json({ error: result.error });
-  }
-  return res.json(result);
-});
-
-app.post('/api/account/link-spotify', (req: Request, res: Response) => {
-  const { username, spotify_token, display_name } = req.body || {};
-  if (!username || !spotify_token) {
-    return res.status(400).json({ error: 'Missing username or spotify_token' });
-  }
-  const result = linkSpotifyToken(username, spotify_token, display_name);
-  if (!result.success) {
-    return res.status(404).json({ error: result.error });
-  }
-  return res.json(result);
-});
-
-app.get('/api/account/me', (req: Request, res: Response) => {
-  const username = (req.query.username || '').toString();
-  const user = getUserByUsername(username);
-  if (!user) {
-    return res.status(404).json({ error: 'User not found' });
-  }
-  return res.json({ success: true, user });
-});
 
 // -------------------------------------------------------------
 // API: Pairing Lifecycle
