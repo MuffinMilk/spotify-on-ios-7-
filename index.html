@@ -3648,9 +3648,9 @@
           if (xhr.readyState === 4) {
             var feedback = document.getElementById("account-feedback-msg");
             feedback.style.display = "block";
-            try {
-              var res = JSON.parse(xhr.responseText);
-              if (xhr.status >= 200 && xhr.status < 300) {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try {
+                var res = JSON.parse(xhr.responseText);
                 feedback.style.color = "#1db954";
                 feedback.innerText = "Success!";
                 safeStorage.set("username", res.user.username);
@@ -3662,15 +3662,26 @@
                 } else {
                   setTimeout(function() { closeAccountModal(); }, 1000);
                 }
-              } else {
+              } catch (e) {
                 feedback.style.color = "#ff3b30";
-                feedback.innerText = res.error || "Authentication failed";
+                feedback.innerText = "Server error";
               }
-            } catch (e) {
+            } else {
               feedback.style.color = "#ff3b30";
-              feedback.innerText = "Error connecting to server";
+              try {
+                var res = JSON.parse(xhr.responseText);
+                feedback.innerText = res.error || "Authentication failed";
+              } catch (e) {
+                feedback.innerText = "Authentication failed (Server error)";
+              }
             }
           }
+        };
+        xhr.onerror = function () {
+          var feedback = document.getElementById("account-feedback-msg");
+          feedback.style.display = "block";
+          feedback.style.color = "#ff3b30";
+          feedback.innerText = "Network error: Connection to server failed";
         };
         xhr.send(JSON.stringify({ username: username, password: password, spotify_token: spotifyToken }));
       };

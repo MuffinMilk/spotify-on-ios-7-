@@ -49,6 +49,7 @@ export function loadUsersFromDisk(): Map<string, UserRecord> {
   if (fs.existsSync(DB_PATH)) {
     try {
       const raw = fs.readFileSync(DB_PATH, 'utf8');
+      console.log('Loaded users file:', raw.length, 'bytes');
       const list: UserRecord[] = JSON.parse(raw);
       if (Array.isArray(list)) {
         list.forEach(u => {
@@ -58,8 +59,10 @@ export function loadUsersFromDisk(): Map<string, UserRecord> {
         });
       }
     } catch (e) {
-      console.warn('Error reading users database, initializing fresh:', e);
+      console.error('Error reading users database:', e);
     }
+  } else {
+    console.log('Users file does not exist at:', DB_PATH);
   }
 
   // Pre-seed default user "muffin" with password "muffin" if no users exist
@@ -186,6 +189,7 @@ export function authenticateUser(
   }
 
   const user = users.get(username);
+  console.log('User lookup result for', username, ':', !!user);
   if (!user) {
     return { success: false, error: 'Account not found. Please check your username or sign up.' };
   }

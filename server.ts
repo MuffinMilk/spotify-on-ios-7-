@@ -70,18 +70,22 @@ function generateCode(): string {
 // API: Account Registration & Cross-Device Authentication
 // -------------------------------------------------------------
 app.post('/api/account/signup', (req: Request, res: Response) => {
+  console.log('Signup attempt:', req.body.username);
   const { username, password, spotify_token } = req.body || {};
   const result = registerUser(username, password, spotify_token);
   if (!result.success) {
+    console.error('Signup failed:', result.error);
     return res.status(400).json({ error: result.error });
   }
   return res.json(result);
 });
 
 app.post('/api/account/login', (req: Request, res: Response) => {
+  console.log('Login attempt:', req.body.username);
   const { username, password } = req.body || {};
   const result = authenticateUser(username, password);
   if (!result.success) {
+    console.error('Login failed:', result.error);
     return res.status(401).json({ error: result.error });
   }
   return res.json(result);

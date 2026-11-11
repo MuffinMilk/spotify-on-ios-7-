@@ -84,5 +84,14 @@
     "createdAt": "2026-11-11T18:29:15.487Z",
     "updatedAt": "2026-11-11T18:29:15.488Z",
     "spotifyDisplayName": "Muffin"
+  },
+  {
+    "username": "muffin1",
+    "displayName": "muffin1",
+    "salt": "96ad5dce05a10a866920302a68fa584f",
+    "passwordHash": "f2f1a93073f163b6ae31993a9ae096e108bc26a17e6f1b0de989dda810a314f11f6e5c38c96a00a78843e4272bc27e967c3be71b8cce94efff82f3d46b1410f6",
+    "sessionToken": "5190418852887556c21fd375bf1ac8c02debf9ba2010eafe",
+    "createdAt": "2026-11-11T18:52:38.452Z",
+    "updatedAt": "2026-11-11T18:52:41.392Z"
   }
 ]
