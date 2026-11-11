@@ -3342,6 +3342,12 @@
         if (now - lastPlayCommandTime < 200) return;
         lastPlayCommandTime = now;
 
+        // Stop any existing native audio before switching track
+        var nativeAudio = document.getElementById("native-audio-player");
+        if (nativeAudio) {
+          try { nativeAudio.pause(); } catch (e) {}
+        }
+
         currentTrack = track;
         playbackProgress = 0;
         isPlaying = true;
@@ -3368,11 +3374,14 @@
               if (xhr.status >= 200 && xhr.status < 300) {
                 console.log("Playing via Spotify Connect:", uri);
                 isPlaying = true;
+                if (nativeAudio) {
+                  try { nativeAudio.pause(); } catch (e) {}
+                }
                 updatePlayPauseIcons();
                 refreshCurrentListView();
                 return;
               }
-              // Fallback to local high-fidelity audio
+              // Fallback to local high-fidelity audio if Connect fails
               startNativePlayback(track, index);
             }
           };
@@ -3400,6 +3409,11 @@
       function startNativePlayback(track, index) {
         var nativeAudio = document.getElementById("native-audio-player");
         if (!nativeAudio) return;
+
+        // Ensure Spotify SDK isn't playing simultaneously in background
+        if (spotifyWebPlayerInstance) {
+          try { spotifyWebPlayerInstance.pause(); } catch (e) {}
+        }
 
         var audioUrl = getTrackAudioUrl(track, index);
         track.preview_url = audioUrl;
@@ -3505,27 +3519,36 @@
           return;
         }
 
-        // Toggle Web Playback SDK if available
-        if (spotifyWebPlayerInstance) {
-          try { spotifyWebPlayerInstance.togglePlay(); } catch (err) {}
-        }
+        if (isPlaying) {
+          // USER WANTS TO PAUSE - IMMEDIATELY SILENCE ALL AUDIO SOURCES
+          isPlaying = false;
 
-        // Send play/pause to Spotify API
-        if (token && token.indexOf("BQ") === 0) {
-          var action = isPlaying ? "pause" : "play";
-          sendPlayerCommand(action);
-        }
-
-        if (nativeAudio && nativeAudio.src) {
-          if (nativeAudio.paused) {
-            nativeAudio.play();
-            isPlaying = true;
-          } else {
-            nativeAudio.pause();
-            isPlaying = false;
+          if (nativeAudio) {
+            try { nativeAudio.pause(); } catch (err) {}
+          }
+          if (spotifyWebPlayerInstance) {
+            try { spotifyWebPlayerInstance.pause(); } catch (err) {}
+          }
+          if (token && token.length > 5) {
+            sendPlayerCommand("pause");
           }
         } else {
-          isPlaying = !isPlaying;
+          // USER WANTS TO RESUME PLAYBACK
+          isPlaying = true;
+
+          if (spotifyWebPlayerInstance && activeConnectTargetId !== "local_full") {
+            try { spotifyWebPlayerInstance.resume(); } catch (err) {}
+          }
+          if (token && token.indexOf("BQ") === 0 && activeConnectTargetId !== "local_full") {
+            sendPlayerCommand("play");
+          } else if (nativeAudio && nativeAudio.src) {
+            try {
+              var p = nativeAudio.play();
+              if (p && p.catch) p.catch(function () {});
+            } catch (err) {}
+          } else {
+            startNativePlayback(currentTrack, 0);
+          }
         }
 
         updatePlayPauseIcons();
