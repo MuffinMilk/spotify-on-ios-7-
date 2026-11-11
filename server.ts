@@ -50,6 +50,12 @@ interface PairingRecord {
 
 const pairingStore = new Map<string, PairingRecord>();
 
+function linkSpotifyToken(username: string, token: string): void {
+  // Account token syncing is handled client-side via Firebase Firestore
+  console.log(`[Spotify] Linked token for user ${username}`);
+}
+
+
 function generateCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';

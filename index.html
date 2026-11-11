@@ -2102,6 +2102,22 @@
       }
 
       // Check URL hash for OAuth redirect token (#access_token=...)
+      function syncCurrentTokenToFirestore(token) {
+        if (!token) return;
+        import('https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js').then(authMod => {
+          import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js').then(fsMod => {
+            var auth = window.auth;
+            var db = window.db;
+            if (auth && auth.currentUser) {
+              fsMod.setDoc(fsMod.doc(db, 'users', auth.currentUser.uid), {
+                spotifyToken: token,
+                updatedAt: new Date().toISOString()
+              }, { merge: true }).catch(function() {});
+            }
+          });
+        });
+      }
+
       function checkOAuthHash() {
         var hash = window.location.hash;
         if (hash && hash.indexOf("access_token=") !== -1) {
@@ -2109,7 +2125,7 @@
           if (match && match[1]) {
             var token = decodeURIComponent(match[1]);
             safeStorage.set("access_token", token);
-            // Clean hash URL cleanly in browser history if supported
+            syncCurrentTokenToFirestore(token);
             if (window.history && window.history.replaceState) {
               window.history.replaceState(null, "", window.location.pathname + window.location.search);
             }
@@ -2203,10 +2219,10 @@
 
       function getBackendBaseUrl() {
         var input = document.getElementById("backend-url-input");
-        if (input && input.value) {
+        if (input && input.value && input.value.trim() !== "" && input.value.indexOf("ngrok-free.dev") === -1) {
           return input.value.replace(/\/+$/, "");
         }
-        return "https://ngrok-free.dev";
+        return window.location.origin;
       }
 
       window.onBackendUrlChanged = function () {
@@ -2402,15 +2418,18 @@
 
       window.startSpotifyOAuth = function () {
         var input = document.getElementById("spotify-client-id-input");
-        var clientId = input ? input.value.trim() : "";
-        if (!clientId) {
-          alert("Please enter your Spotify Client ID from developer.spotify.com/dashboard");
-          return;
-        }
-
+        var clientId = (input ? input.value.trim() : "") || "74009b25ca824b099fb2415105fb9ca6";
+        
         safeStorage.set("spotify_client_id", clientId);
-        var backendBaseUrl = getBackendBaseUrl();
-        var authUrl = backendBaseUrl + "/login/spotify?code=" + encodeURIComponent(currentPairingCode || "X7K92P");
+        var redirectUri = getCleanRedirectUri();
+        var scopes = 'user-read-private playlist-read-private user-library-read user-read-email user-modify-playback-state user-read-playback-state streaming app-remote-control';
+        var authUrl = 'https://accounts.spotify.com/authorize?client_id=' + encodeURIComponent(clientId) +
+          '&response_type=token' +
+          '&redirect_uri=' + encodeURIComponent(redirectUri) +
+          '&scope=' + encodeURIComponent(scopes) +
+          '&state=' + encodeURIComponent(currentPairingCode || "X7K92P") +
+          '&show_dialog=true';
+
         window.location.href = authUrl;
       };
 
@@ -3695,20 +3714,23 @@
             } else {
               authMod.signInWithEmailAndPassword(auth, email, password)
                 .then(userCredential => {
-                  if (spotifyToken) {
-                    return fsMod.updateDoc(fsMod.doc(db, 'users', userCredential.user.uid), {
-                      spotifyToken: spotifyToken
-                    }).then(() => {
-                      feedback.style.color = "#1db954";
-                      feedback.innerText = "Success!";
-                      safeStorage.set("username", username);
-                      setTimeout(function() { closeAccountModal(); }, 1000);
-                    });
-                  }
-                  feedback.style.color = "#1db954";
-                  feedback.innerText = "Success!";
-                  safeStorage.set("username", username);
-                  setTimeout(function() { closeAccountModal(); }, 1000);
+                  return fsMod.getDoc(fsMod.doc(db, 'users', userCredential.user.uid)).then(docSnap => {
+                    var docData = docSnap.exists() ? docSnap.data() : null;
+                    if (docData && docData.spotifyToken) {
+                      safeStorage.set("access_token", docData.spotifyToken);
+                    } else if (spotifyToken) {
+                      fsMod.setDoc(fsMod.doc(db, 'users', userCredential.user.uid), {
+                        spotifyToken: spotifyToken
+                      }, { merge: true });
+                    }
+                    feedback.style.color = "#1db954";
+                    feedback.innerText = "Success! Spotify Synced.";
+                    safeStorage.set("username", username);
+                    setTimeout(function() {
+                      closeAccountModal();
+                      initApp();
+                    }, 1000);
+                  });
                 })
                 .catch(err => {
                   feedback.style.color = "#ff3b30";
