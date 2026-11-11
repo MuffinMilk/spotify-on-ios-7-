@@ -2223,7 +2223,8 @@
         setPollingStatus(true, "Connecting to backend...");
 
         // If backend is the default ngrok or same origin, use our server endpoint first
-        var reqUrl = (backendUrl === "https://ngrok-free.dev") ? "/api/pair/new" : backendUrl;
+        var backendUrl = getBackendBaseUrl();
+        var reqUrl = backendUrl + "/api/pair/new";
         if (reqUrl.indexOf("ngrok") !== -1) {
           reqUrl += (reqUrl.indexOf("?") === -1 ? "?" : "&") + "ngrok-skip-browser-warning=69420";
         }
@@ -2299,7 +2300,7 @@
         pollCount = 0;
         var backendUrl = getBackendBaseUrl();
         var statusUrl = (backendUrl === "https://ngrok-free.dev")
-          ? "/api/pair/status/" + encodeURIComponent(code)
+          ? getBackendBaseUrl() + "/api/pair/status/" + encodeURIComponent(code)
           : backendUrl + "/" + encodeURIComponent(code);
 
         if (statusUrl.indexOf("ngrok") !== -1) {
@@ -2358,7 +2359,7 @@
       window.simulatePairSuccess = function () {
         setPollingStatus(true, "Connecting to Spotify API...");
         var xhr = new XMLHttpRequest();
-        xhr.open("POST", "/api/pair/approve", true);
+        xhr.open("POST", getBackendBaseUrl() + "/api/pair/approve", true);
         xhr.setRequestHeader("Content-Type", "application/json");
         xhr.timeout = 5000;
 
@@ -2408,10 +2409,8 @@
         }
 
         safeStorage.set("spotify_client_id", clientId);
-        var redirectUri = getCleanRedirectUri();
-        var scopes = "user-read-private playlist-read-private user-library-read";
-
-        var authUrl = "/login/spotify?code=" + encodeURIComponent(currentPairingCode || "X7K92P");
+        var backendBaseUrl = getBackendBaseUrl();
+        var authUrl = backendBaseUrl + "/login/spotify?code=" + encodeURIComponent(currentPairingCode || "X7K92P");
         window.location.href = authUrl;
       };
 
@@ -2528,7 +2527,7 @@
 
         // Load playlists via server backend proxy
         var xhr = new XMLHttpRequest();
-        xhr.open("GET", "/api/spotify/playlists?token=" + encodeURIComponent(token), true);
+        xhr.open("GET", getBackendBaseUrl() + "/api/spotify/playlists?token=" + encodeURIComponent(token), true);
         xhr.timeout = 8000;
 
         xhr.onreadystatechange = function () {
@@ -2627,7 +2626,7 @@
 
       function fetchSpotifyPlaylistTracks(pl) {
         var token = safeStorage.get("access_token") || "";
-        var reqUrl = "/api/spotify/playlist-tracks?playlist_id=" + encodeURIComponent(pl.id || "") +
+        var reqUrl = getBackendBaseUrl() + "/api/spotify/playlist-tracks?playlist_id=" + encodeURIComponent(pl.id || "") +
           "&name=" + encodeURIComponent(pl.name || "") +
           "&token=" + encodeURIComponent(token);
 
@@ -2876,7 +2875,7 @@
         if (!token) return;
 
         var xhr = new XMLHttpRequest();
-        xhr.open("GET", "/api/spotify/player?token=" + encodeURIComponent(token), true);
+        xhr.open("GET", getBackendBaseUrl() + "/api/spotify/player?token=" + encodeURIComponent(token), true);
         xhr.timeout = 4000;
         xhr.onreadystatechange = function () {
           if (xhr.readyState === 4 && xhr.status === 200) {
@@ -2947,7 +2946,7 @@
           var uri = track.uri || (track.id ? "spotify:track:" + track.id : "");
 
           var xhr = new XMLHttpRequest();
-          xhr.open("POST", "/api/spotify/player/play", true);
+          xhr.open("POST", getBackendBaseUrl() + "/api/spotify/player/play", true);
           xhr.setRequestHeader("Content-Type", "application/json");
           xhr.timeout = 4000;
           xhr.onreadystatechange = function () {
@@ -3043,7 +3042,7 @@
           : spotifyWebPlayerDeviceId;
 
         var xhr = new XMLHttpRequest();
-        xhr.open("POST", "/api/spotify/player/" + action, true);
+        xhr.open("POST", getBackendBaseUrl() + "/api/spotify/player/" + action, true);
         xhr.setRequestHeader("Content-Type", "application/json");
         xhr.send(JSON.stringify({
           token: token,
@@ -3207,7 +3206,7 @@
         container.innerHTML = '<div style="padding: 10px; text-align: center; color: #8e8e93;"><div class="ios7-spinner" style="margin: 0 auto 6px;"></div>Scanning Spotify Connect devices...</div>';
 
         var xhr = new XMLHttpRequest();
-        xhr.open("GET", "/api/spotify/devices?token=" + encodeURIComponent(token || ""), true);
+        xhr.open("GET", getBackendBaseUrl() + "/api/spotify/devices?token=" + encodeURIComponent(token || ""), true);
         xhr.timeout = 4000;
         xhr.onreadystatechange = function () {
           if (xhr.readyState === 4) {
@@ -3297,7 +3296,7 @@
         var token = safeStorage.get("access_token");
         if (token && deviceId && deviceId !== 'local_full' && deviceId !== 'phone' && deviceId !== 'web_receiver') {
           var xhr = new XMLHttpRequest();
-          xhr.open("POST", "/api/spotify/player/transfer", true);
+          xhr.open("POST", getBackendBaseUrl() + "/api/spotify/player/transfer", true);
           xhr.setRequestHeader("Content-Type", "application/json");
           xhr.send(JSON.stringify({ token: token, device_id: deviceId }));
         }
@@ -3389,7 +3388,7 @@
 
         var token = safeStorage.get("access_token") || "";
         var xhr = new XMLHttpRequest();
-        xhr.open("GET", "/api/spotify/liked-tracks?token=" + encodeURIComponent(token), true);
+        xhr.open("GET", getBackendBaseUrl() + "/api/spotify/liked-tracks?token=" + encodeURIComponent(token), true);
         xhr.timeout = 8000;
 
         xhr.onreadystatechange = function () {
@@ -3471,7 +3470,7 @@
         container.innerHTML = '<div style="padding: 24px; text-align: center; color: #8e8e93;"><div class="ios7-spinner" style="margin: 0 auto 10px;"></div>Searching Spotify...</div>';
 
         var xhr = new XMLHttpRequest();
-        xhr.open("GET", "/api/spotify/search?q=" + encodeURIComponent(query), true);
+        xhr.open("GET", getBackendBaseUrl() + "/api/spotify/search?q=" + encodeURIComponent(query), true);
         xhr.timeout = 7000;
 
         xhr.onreadystatechange = function () {
@@ -3722,7 +3721,7 @@
 
       function linkSpotifyAccount(username, token, displayName) {
         var xhr = new XMLHttpRequest();
-        xhr.open("POST", "/api/account/link-spotify", true);
+        xhr.open("POST", getBackendBaseUrl() + "/api/account/link-spotify", true);
         xhr.setRequestHeader("Content-Type", "application/json");
         xhr.send(JSON.stringify({ username: username, spotify_token: token, display_name: displayName }));
         xhr.onreadystatechange = function () {
