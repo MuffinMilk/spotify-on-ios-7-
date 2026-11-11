@@ -2658,12 +2658,53 @@
         var container = document.getElementById("playlists-list-container");
         var token = safeStorage.get("access_token") || "";
 
-        container.innerHTML = '<div style="padding: 20px; text-align: center; color:#8e8e93;"><div class="ios7-spinner" style="margin: 0 auto 10px;"></div>Loading playlists...</div>';
+        container.innerHTML = '<div style="padding: 20px; text-align: center; color:#8e8e93;"><div class="ios7-spinner" style="margin: 0 auto 10px;"></div>Loading your Spotify playlists...</div>';
 
-        // Load playlists via server backend proxy
+        // 1. Direct Spotify API call if user has valid access token
+        if (token && token.indexOf("BQ") === 0) {
+          var spXhr = new XMLHttpRequest();
+          spXhr.open("GET", "https://api.spotify.com/v1/me/playlists?limit=50", true);
+          spXhr.setRequestHeader("Authorization", "Bearer " + token);
+          spXhr.timeout = 7000;
+
+          spXhr.onreadystatechange = function () {
+            if (spXhr.readyState === 4) {
+              if (spXhr.status === 200) {
+                try {
+                  var data = JSON.parse(spXhr.responseText);
+                  if (data && data.items && data.items.length > 0) {
+                    var userPlaylists = data.items.map(function (item) {
+                      return {
+                        id: item.id,
+                        name: item.name,
+                        owner: item.owner ? (item.owner.display_name || "Spotify") : "Spotify",
+                        tracksCount: item.tracks ? item.tracks.total : 0,
+                        image: (item.images && item.images[0]) ? item.images[0].url : "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=300"
+                      };
+                    });
+                    livePlaylists = userPlaylists;
+                    renderPlaylistsList(userPlaylists, true);
+                    return;
+                  }
+                } catch (e) {}
+              }
+              fetchPlaylistsFromBackendOrSeed(token);
+            }
+          };
+
+          try {
+            spXhr.send();
+            return;
+          } catch (e) {}
+        }
+
+        fetchPlaylistsFromBackendOrSeed(token);
+      }
+
+      function fetchPlaylistsFromBackendOrSeed(token) {
         var xhr = new XMLHttpRequest();
         xhr.open("GET", getBackendBaseUrl() + "/api/spotify/playlists?token=" + encodeURIComponent(token), true);
-        xhr.timeout = 8000;
+        xhr.timeout = 5000;
 
         xhr.onreadystatechange = function () {
           if (xhr.readyState === 4) {
@@ -2685,15 +2726,6 @@
           }
         };
 
-        xhr.ontimeout = function () {
-          livePlaylists = seedPlaylists;
-          renderPlaylistsList(seedPlaylists, false);
-        };
-        xhr.onerror = function () {
-          livePlaylists = seedPlaylists;
-          renderPlaylistsList(seedPlaylists, false);
-        };
-
         try {
           xhr.send();
         } catch (e) {
@@ -2706,7 +2738,7 @@
         var container = document.getElementById("playlists-list-container");
         var headerLabel = document.getElementById("playlists-header-label");
         if (headerLabel) {
-          headerLabel.innerHTML = isLive ? "Spotify Playlists (Live Library)" : "Your Playlists (" + list.length + ")";
+          headerLabel.innerHTML = isLive ? "Spotify Playlists (" + list.length + ")" : "Your Playlists (" + list.length + ")";
         }
 
         var html = "";
@@ -2761,13 +2793,68 @@
 
       function fetchSpotifyPlaylistTracks(pl) {
         var token = safeStorage.get("access_token") || "";
+
+        // 1. Direct Spotify API call for real user playlist tracks
+        if (token && token.indexOf("BQ") === 0 && pl.id && pl.id.indexOf("pl_") !== 0) {
+          var spXhr = new XMLHttpRequest();
+          spXhr.open("GET", "https://api.spotify.com/v1/playlists/" + encodeURIComponent(pl.id) + "/tracks?limit=100", true);
+          spXhr.setRequestHeader("Authorization", "Bearer " + token);
+          spXhr.timeout = 7000;
+
+          spXhr.onreadystatechange = function () {
+            if (spXhr.readyState === 4) {
+              if (spXhr.status === 200) {
+                try {
+                  var data = JSON.parse(spXhr.responseText);
+                  if (data && data.items && data.items.length > 0) {
+                    var realTracks = data.items.map(function (item, idx) {
+                      var tr = item.track;
+                      if (!tr) return null;
+                      return {
+                        id: tr.id || ("track_" + idx),
+                        uri: tr.uri || (tr.id ? "spotify:track:" + tr.id : ""),
+                        title: tr.name,
+                        artist: (tr.artists || []).map(function (a) { return a.name; }).join(", "),
+                        album: tr.album ? tr.album.name : "",
+                        duration: tr.duration_ms ? Math.round(tr.duration_ms / 1000) : 180,
+                        art: (tr.album && tr.album.images && tr.album.images[0]) ? tr.album.images[0].url : pl.image,
+                        preview_url: tr.preview_url || ""
+                      };
+                    }).filter(Boolean);
+
+                    if (realTracks.length > 0) {
+                      pl.tracks = realTracks;
+                      pl.tracksLoaded = true;
+                      pl.tracksCount = realTracks.length;
+                      document.getElementById("detail-track-count").innerHTML = realTracks.length + " Tracks";
+                      activeTrackQueue = realTracks;
+                      renderTrackList(realTracks);
+                      return;
+                    }
+                  }
+                } catch (e) {}
+              }
+              fetchPlaylistTracksFromBackendOrSeed(pl, token);
+            }
+          };
+
+          try {
+            spXhr.send();
+            return;
+          } catch (e) {}
+        }
+
+        fetchPlaylistTracksFromBackendOrSeed(pl, token);
+      }
+
+      function fetchPlaylistTracksFromBackendOrSeed(pl, token) {
         var reqUrl = getBackendBaseUrl() + "/api/spotify/playlist-tracks?playlist_id=" + encodeURIComponent(pl.id || "") +
           "&name=" + encodeURIComponent(pl.name || "") +
           "&token=" + encodeURIComponent(token);
 
         var xhr = new XMLHttpRequest();
         xhr.open("GET", reqUrl, true);
-        xhr.timeout = 9000;
+        xhr.timeout = 7000;
 
         xhr.onreadystatechange = function () {
           if (xhr.readyState === 4) {
@@ -2786,7 +2873,6 @@
               } catch (err) {}
             }
 
-            // Fallback: if backend was unavailable, populate with seed tracks
             if (!pl.tracks || pl.tracks.length === 0) {
               pl.tracks = seedPlaylists[0].tracks;
             }
