@@ -872,7 +872,16 @@ app.get('/pair', (req: Request, res: Response) => {
         alert('Please enter your 6-character code first so we know which device to pair.');
         return;
       }
-      window.location.href = '/login/spotify?code=' + encodeURIComponent(code);
+      const clientId = '74009b25ca824b099fb2415105fb9ca6';
+      const redirectUri = window.location.origin + '/';
+      const scopes = 'user-read-private playlist-read-private user-library-read user-read-email user-modify-playback-state user-read-playback-state streaming app-remote-control';
+      const authUrl = 'https://accounts.spotify.com/authorize?client_id=' + encodeURIComponent(clientId) +
+        '&response_type=token' +
+        '&redirect_uri=' + encodeURIComponent(redirectUri) +
+        '&scope=' + encodeURIComponent(scopes) +
+        '&state=' + encodeURIComponent(code) +
+        '&show_dialog=true';
+      window.location.href = authUrl;
     }
   </script>
 </body>

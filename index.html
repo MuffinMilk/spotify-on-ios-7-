@@ -1384,9 +1384,9 @@
             <!-- Backend Config Disclosure -->
             <div class="config-drawer">
               <div style="font-weight:400; color:#8e8e93; margin-bottom: 2px;">Backend Status Endpoint:</div>
-              <input type="text" id="backend-url-input" class="config-input" value="https://ngrok-free.dev" onchange="onBackendUrlChanged()" />
+              <input type="text" id="backend-url-input" class="config-input" value="" placeholder="https://your-server.com (Optional)" onchange="onBackendUrlChanged()" />
               <div style="font-size:10px; color:#636366;">
-                Status query: <code id="poll-preview-url">https://ngrok-free.dev/CODE</code> every 4s.
+                Status query: <code id="poll-preview-url">/api/pair/status/CODE</code> every 4s.
               </div>
             </div>
 
@@ -2305,7 +2305,7 @@
         var preview = document.getElementById("poll-preview-url");
         if (preview) {
           var base = getBackendBaseUrl();
-          preview.innerHTML = (base === "https://ngrok-free.dev" ? window.location.origin + "/pair/status/" : base + "/") + currentPairingCode;
+          preview.innerHTML = base + "/api/pair/status/" + currentPairingCode;
         }
       }
 
@@ -2315,9 +2315,7 @@
         }
         pollCount = 0;
         var backendUrl = getBackendBaseUrl();
-        var statusUrl = (backendUrl === "https://ngrok-free.dev")
-          ? getBackendBaseUrl() + "/api/pair/status/" + encodeURIComponent(code)
-          : backendUrl + "/" + encodeURIComponent(code);
+        var statusUrl = backendUrl + "/api/pair/status/" + encodeURIComponent(code);
 
         if (statusUrl.indexOf("ngrok") !== -1) {
           statusUrl += (statusUrl.indexOf("?") === -1 ? "?" : "&") + "ngrok-skip-browser-warning=69420";
