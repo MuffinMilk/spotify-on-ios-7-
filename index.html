@@ -2118,6 +2118,36 @@
         });
       }
 
+      function generateRandomString(length) {
+        var possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
+        var text = '';
+        if (window.crypto && window.crypto.getRandomValues) {
+          var values = new Uint8Array(length);
+          window.crypto.getRandomValues(values);
+          for (var i = 0; i < values.length; i++) {
+            text += possible.charAt(values[i] % possible.length);
+          }
+        } else {
+          for (var i = 0; i < length; i++) {
+            text += possible.charAt(Math.floor(Math.random() * possible.length));
+          }
+        }
+        return text;
+      }
+
+      function sha256(plain) {
+        var encoder = new TextEncoder();
+        var data = encoder.encode(plain);
+        return window.crypto.subtle.digest('SHA-256', data);
+      }
+
+      function base64encode(input) {
+        return btoa(String.fromCharCode.apply(null, new Uint8Array(input)))
+          .replace(/=/g, '')
+          .replace(/\+/g, '-')
+          .replace(/\//g, '_');
+      }
+
       function checkOAuthHash() {
         var hash = window.location.hash;
         if (hash && hash.indexOf("access_token=") !== -1) {
@@ -2133,6 +2163,64 @@
           }
         }
         return null;
+      }
+
+      function checkOAuthCallback(callback) {
+        var hashToken = checkOAuthHash();
+        if (hashToken) {
+          callback(hashToken);
+          return;
+        }
+
+        var search = window.location.search;
+        if (search && search.indexOf("code=") !== -1) {
+          var match = search.match(/[?&]code=([^&]*)/);
+          if (match && match[1]) {
+            var authCode = decodeURIComponent(match[1]);
+            var clientId = safeStorage.get("spotify_client_id") || "74009b25ca824b099fb2415105fb9ca6";
+            var codeVerifier = safeStorage.get("spotify_code_verifier") || "";
+            var redirectUri = getCleanRedirectUri();
+
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", "https://accounts.spotify.com/api/token", true);
+            xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+
+            var params = "client_id=" + encodeURIComponent(clientId) +
+              "&grant_type=authorization_code" +
+              "&code=" + encodeURIComponent(authCode) +
+              "&redirect_uri=" + encodeURIComponent(redirectUri);
+
+            if (codeVerifier) {
+              params += "&code_verifier=" + encodeURIComponent(codeVerifier);
+            }
+
+            xhr.onreadystatechange = function () {
+              if (xhr.readyState === 4) {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                  try {
+                    var data = JSON.parse(xhr.responseText);
+                    if (data && data.access_token) {
+                      safeStorage.set("access_token", data.access_token);
+                      if (data.refresh_token) {
+                        safeStorage.set("refresh_token", data.refresh_token);
+                      }
+                      syncCurrentTokenToFirestore(data.access_token);
+                      if (window.history && window.history.replaceState) {
+                        window.history.replaceState(null, "", window.location.pathname);
+                      }
+                      callback(data.access_token);
+                      return;
+                    }
+                  } catch (e) {}
+                }
+                callback(null);
+              }
+            };
+            xhr.send(params);
+            return;
+          }
+        }
+        callback(null);
       }
 
       function getCleanRedirectUri() {
@@ -2171,34 +2259,33 @@
           if (clientInput) clientInput.value = savedClientId;
         }
 
-        // Check if returning from Spotify OAuth
-        var hashToken = checkOAuthHash();
-        var token = hashToken || safeStorage.get("access_token");
-        var username = safeStorage.get("username");
+        checkOAuthCallback(function (newAccessToken) {
+          var token = newAccessToken || safeStorage.get("access_token");
+          var username = safeStorage.get("username");
 
-        // Update UI if user is logged in
-        if (username) {
-          var nameEl = document.getElementById("user-display-name");
-          var subEl = document.getElementById("user-account-subtitle");
-          if (nameEl) nameEl.innerText = "Account: " + username;
-          if (subEl) subEl.innerText = "Tap to manage account";
-          document.getElementById("pair-nav-account-btn").innerText = "👤 " + username;
-          document.getElementById("library-nav-account-btn").innerText = "👤 " + username;
-          document.getElementById("pair-account-banner").style.display = "block";
-          document.getElementById("pair-account-name").innerText = username;
-        }
+          if (username) {
+            var nameEl = document.getElementById("user-display-name");
+            var subEl = document.getElementById("user-account-subtitle");
+            if (nameEl) nameEl.innerText = "Account: " + username;
+            if (subEl) subEl.innerText = "Tap to manage account";
+            document.getElementById("pair-nav-account-btn").innerText = "👤 " + username;
+            document.getElementById("library-nav-account-btn").innerText = "👤 " + username;
+            document.getElementById("pair-account-banner").style.display = "block";
+            document.getElementById("pair-account-name").innerText = username;
+          }
 
-        if (token && token.length > 5) {
-          showMainDashboard();
-        } else {
-          showPairDeviceScreen();
-        }
+          if (token && token.length > 5) {
+            showMainDashboard();
+          } else {
+            showPairDeviceScreen();
+          }
 
-        // Initialize HTML5 native audio event hooks
-        initNativeAudioEvents();
+          // Initialize HTML5 native audio event hooks
+          initNativeAudioEvents();
 
-        renderRecentTracks();
-        renderRadioGrid();
+          renderRecentTracks();
+          renderRadioGrid();
+        });
       }
 
       // -----------------------------------------------------------------
@@ -2419,16 +2506,34 @@
         var clientId = (input ? input.value.trim() : "") || "74009b25ca824b099fb2415105fb9ca6";
         
         safeStorage.set("spotify_client_id", clientId);
-        var redirectUri = getCleanRedirectUri();
-        var scopes = 'user-read-private playlist-read-private user-library-read user-read-email user-modify-playback-state user-read-playback-state streaming app-remote-control';
-        var authUrl = 'https://accounts.spotify.com/authorize?client_id=' + encodeURIComponent(clientId) +
-          '&response_type=token' +
-          '&redirect_uri=' + encodeURIComponent(redirectUri) +
-          '&scope=' + encodeURIComponent(scopes) +
-          '&state=' + encodeURIComponent(currentPairingCode || "X7K92P") +
-          '&show_dialog=true';
+        var codeVerifier = generateRandomString(64);
+        safeStorage.set("spotify_code_verifier", codeVerifier);
 
-        window.location.href = authUrl;
+        function triggerRedirect(challenge) {
+          var redirectUri = getCleanRedirectUri();
+          var scopes = 'user-read-private playlist-read-private user-library-read user-read-email user-modify-playback-state user-read-playback-state streaming app-remote-control';
+
+          var authUrl = 'https://accounts.spotify.com/authorize?' +
+            'client_id=' + encodeURIComponent(clientId) +
+            '&response_type=code' +
+            '&redirect_uri=' + encodeURIComponent(redirectUri) +
+            (challenge ? ('&code_challenge_method=S256&code_challenge=' + encodeURIComponent(challenge)) : '') +
+            '&scope=' + encodeURIComponent(scopes) +
+            '&state=' + encodeURIComponent(currentPairingCode || "X7K92P") +
+            '&show_dialog=true';
+
+          window.location.href = authUrl;
+        }
+
+        if (window.crypto && window.crypto.subtle && typeof TextEncoder !== "undefined") {
+          sha256(codeVerifier).then(function (hashed) {
+            triggerRedirect(base64encode(hashed));
+          }).catch(function () {
+            triggerRedirect(null);
+          });
+        } else {
+          triggerRedirect(null);
+        }
       };
 
       // -----------------------------------------------------------------
