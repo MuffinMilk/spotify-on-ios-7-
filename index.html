@@ -2834,12 +2834,62 @@
                   }
                 } catch (e) {}
               }
-              fetchPlaylistTracksFromBackendOrSeed(pl, token);
+              fetchTracksByPlaylistName(pl, token);
             }
           };
 
           try {
             spXhr.send();
+            return;
+          } catch (e) {}
+        }
+
+        fetchTracksByPlaylistName(pl, token);
+      }
+
+      function fetchTracksByPlaylistName(pl, token) {
+        var query = pl.name || "MF DOOM";
+        if (token && token.indexOf("BQ") === 0) {
+          var searchXhr = new XMLHttpRequest();
+          searchXhr.open("GET", "https://api.spotify.com/v1/search?q=" + encodeURIComponent(query) + "&type=track&limit=25", true);
+          searchXhr.setRequestHeader("Authorization", "Bearer " + token);
+          searchXhr.timeout = 7000;
+
+          searchXhr.onreadystatechange = function () {
+            if (searchXhr.readyState === 4) {
+              if (searchXhr.status === 200) {
+                try {
+                  var data = JSON.parse(searchXhr.responseText);
+                  var items = (data.tracks && data.tracks.items) ? data.tracks.items : [];
+                  if (items.length > 0) {
+                    var searchedTracks = items.map(function (tr, idx) {
+                      return {
+                        id: tr.id || ("search_" + idx),
+                        uri: tr.uri || (tr.id ? "spotify:track:" + tr.id : ""),
+                        title: tr.name,
+                        artist: (tr.artists || []).map(function (a) { return a.name; }).join(", "),
+                        album: tr.album ? tr.album.name : "",
+                        duration: tr.duration_ms ? Math.round(tr.duration_ms / 1000) : 180,
+                        art: (tr.album && tr.album.images && tr.album.images[0]) ? tr.album.images[0].url : pl.image,
+                        preview_url: tr.preview_url || ""
+                      };
+                    });
+                    pl.tracks = searchedTracks;
+                    pl.tracksLoaded = true;
+                    pl.tracksCount = searchedTracks.length;
+                    document.getElementById("detail-track-count").innerHTML = searchedTracks.length + " Tracks";
+                    activeTrackQueue = searchedTracks;
+                    renderTrackList(searchedTracks);
+                    return;
+                  }
+                } catch (e) {}
+              }
+              fetchPlaylistTracksFromBackendOrSeed(pl, token);
+            }
+          };
+
+          try {
+            searchXhr.send();
             return;
           } catch (e) {}
         }
@@ -2873,20 +2923,18 @@
               } catch (err) {}
             }
 
-            if (!pl.tracks || pl.tracks.length === 0) {
-              pl.tracks = seedPlaylists[0].tracks;
-            }
-            document.getElementById("detail-track-count").innerHTML = pl.tracks.length + " Tracks";
-            activeTrackQueue = pl.tracks;
-            renderTrackList(pl.tracks);
+            var fallbackTracks = (pl.tracks && pl.tracks.length > 0) ? pl.tracks : seedPlaylists[0].tracks;
+            document.getElementById("detail-track-count").innerHTML = fallbackTracks.length + " Tracks";
+            activeTrackQueue = fallbackTracks;
+            renderTrackList(fallbackTracks);
           }
         };
 
         try {
           xhr.send();
         } catch (e) {
-          if (!pl.tracks) pl.tracks = seedPlaylists[0].tracks;
-          renderTrackList(pl.tracks);
+          var fallbackTracks = (pl.tracks && pl.tracks.length > 0) ? pl.tracks : seedPlaylists[0].tracks;
+          renderTrackList(fallbackTracks);
         }
       }
 

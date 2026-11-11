@@ -370,8 +370,8 @@ app.get('/api/spotify/playlist-tracks', async (req: Request, res: Response) => {
   if (tracks.length === 0) {
     try {
       const appToken = await getSpotifyAppToken();
-      let searchQuery = playlistName || 'No Other Heart';
-      if (searchQuery.toLowerCase().indexOf('no other heart') !== -1) {
+      let searchQuery = playlistName || 'MF DOOM';
+      if (playlistName && playlistName.toLowerCase().indexOf('no other heart') !== -1) {
         searchQuery = 'Mac DeMarco';
       }
 
