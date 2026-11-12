@@ -3879,8 +3879,8 @@
           header.innerHTML = "Browse Categories";
           var categories = [
             { name: "Mac DeMarco", count: "Top Songs" },
-            { name: "No Other Heart", count: "Playlists & Tracks" },
-            { name: "Steve Lacy", count: "Popular" },
+            { name: "MF DOOM", count: "Hip Hop" },
+            { name: "KMFDM", count: "Industrial" },
             { name: "Indie Pop & Chill", count: "50 songs" },
             { name: "Today's Top Hits", count: "100 songs" }
           ];
@@ -3897,154 +3897,62 @@
         }
 
         header.innerHTML = "Searching for \"" + escapeHtml(query) + "\"...";
-        container.innerHTML = '<div style="padding: 24px; text-align: center; color: #8e8e93;"><div class="ios7-spinner" style="margin: 0 auto 10px;"></div>Searching Spotify...</div>';
+        container.innerHTML = '<div style="padding: 24px; text-align: center; color: #8e8e93;"><div class="ios7-spinner" style="margin: 0 auto 10px;"></div>Searching library...</div>';
 
-        getSpotifyAppToken(function (appToken) {
-          var userToken = safeStorage.get("access_token") || "";
-          var tokenToUse = (userToken && userToken.length > 20 && userToken.indexOf("BQB_ios7_token_") === -1) ? userToken : appToken;
-          if (!tokenToUse) tokenToUse = appToken;
+        setTimeout(function () {
+          var matches = [];
+          var qLower = query.toLowerCase().trim();
 
-          var doApiSearch = function (tok) {
-            var xhr = new XMLHttpRequest();
-            xhr.open("GET", "https://api.spotify.com/v1/search?q=" + encodeURIComponent(query) + "&type=track&limit=25", true);
-            if (tok) xhr.setRequestHeader("Authorization", "Bearer " + tok);
-            xhr.timeout = 7000;
-
-            xhr.onreadystatechange = function () {
-              if (xhr.readyState === 4) {
-                if (xhr.status === 200) {
-                  try {
-                    var res = JSON.parse(xhr.responseText);
-                    var items = (res.tracks && res.tracks.items) ? res.tracks.items : [];
-                    if (items.length > 0) {
-                      header.innerHTML = "Search Results (" + items.length + ")";
-                      var mappedTracks = items.map(function (tr, idx) {
-                        return {
-                          id: tr.id || ("search_" + idx),
-                          uri: tr.uri || (tr.id ? "spotify:track:" + tr.id : ""),
-                          title: tr.name,
-                          artist: (tr.artists || []).map(function (a) { return a.name; }).join(", "),
-                          album: tr.album ? tr.album.name : "",
-                          duration: tr.duration_ms ? Math.round(tr.duration_ms / 1000) : 180,
-                          art: (tr.album && tr.album.images && tr.album.images[0]) ? tr.album.images[0].url : seedPlaylists[0].image,
-                          preview_url: tr.preview_url || ""
-                        };
-                      });
-                      window.currentSearchMatches = mappedTracks;
-                      activeTrackQueue = mappedTracks;
-
-                      var html = "";
-                      for (var m = 0; m < mappedTracks.length; m++) {
-                        var song = mappedTracks[m];
-                        var isCurrent = currentTrack && (currentTrack.id === song.id || currentTrack.title === song.title);
-                        var activeStyle = isCurrent ? ' style="color:#1db954;"' : '';
-                        var playingBadge = (isCurrent && isPlaying) ? ' <span style="font-size:11px; color:#1db954;">▶</span>' : '';
-
-                        html += '<div class="ios7-rich-cell" onclick="playSelectedSearchResult(' + m + ')">' +
-                          '<img src="' + song.art + '" class="rich-thumbnail" style="width:36px; height:36px;" alt="Art">' +
-                          '<div class="rich-info">' +
-                            '<div class="rich-title"' + activeStyle + '>' + escapeHtml(song.title) + playingBadge + '</div>' +
-                            '<div class="rich-subtitle">' + escapeHtml(song.artist) + '</div>' +
-                          '</div>' +
-                          '<div class="cell-value" style="font-size:12px;">' + formatMmSs(song.duration) + '</div>' +
-                        '</div>';
-                      }
-                      container.innerHTML = html;
-                      return;
-                    }
-                  } catch (e) {}
-                }
-                fallbackBackendSearch(query, container, header);
-              }
-            };
-
-            try {
-              xhr.send();
-            } catch (e) {
-              fallbackBackendSearch(query, container, header);
-            }
-          };
-
-          if (tokenToUse) {
-            doApiSearch(tokenToUse);
-          } else {
-            getSpotifyAppToken(function (newTok) {
-              doApiSearch(newTok);
-            });
-          }
-        });
-      }
-
-      function fallbackBackendSearch(query, container, header) {
-        var xhr = new XMLHttpRequest();
-        xhr.open("GET", getBackendBaseUrl() + "/api/spotify/search?q=" + encodeURIComponent(query), true);
-        xhr.timeout = 5000;
-        xhr.onreadystatechange = function () {
-          if (xhr.readyState === 4) {
-            if (xhr.status === 200) {
-              try {
-                var res = JSON.parse(xhr.responseText);
-                if (res && res.tracks && res.tracks.length > 0) {
-                  header.innerHTML = "Search Results (" + res.tracks.length + ")";
-                  window.currentSearchMatches = res.tracks;
-                  activeTrackQueue = res.tracks;
-                  var html = "";
-                  for (var m = 0; m < res.tracks.length; m++) {
-                    var song = res.tracks[m];
-                    html += '<div class="ios7-rich-cell" onclick="playSelectedSearchResult(' + m + ')">' +
-                      '<img src="' + (song.art || seedPlaylists[0].image) + '" class="rich-thumbnail" style="width:36px; height:36px;" alt="Art">' +
-                      '<div class="rich-info">' +
-                        '<div class="rich-title">' + escapeHtml(song.title) + '</div>' +
-                        '<div class="rich-subtitle">' + escapeHtml(song.artist) + '</div>' +
-                      '</div>' +
-                      '<div class="cell-value" style="font-size:12px;">' + formatMmSs(song.duration) + '</div>' +
-                    '</div>';
-                  }
-                  container.innerHTML = html;
-                  return;
-                }
-              } catch (e) {}
-            }
-
-            // Seed local search match
-            var matches = [];
-            var qLower = query.toLowerCase();
-            for (var p = 0; p < seedPlaylists.length; p++) {
-              var pl = seedPlaylists[p];
-              for (var t = 0; t < pl.tracks.length; t++) {
-                var tr = pl.tracks[t];
-                if (tr.title.toLowerCase().indexOf(qLower) !== -1 || tr.artist.toLowerCase().indexOf(qLower) !== -1 || pl.name.toLowerCase().indexOf(qLower) !== -1) {
+          // Gather all unique tracks from seedPlaylists
+          var seenIds = {};
+          for (var p = 0; p < seedPlaylists.length; p++) {
+            var pl = seedPlaylists[p];
+            for (var t = 0; t < pl.tracks.length; t++) {
+              var tr = pl.tracks[t];
+              var trackId = tr.id || (tr.title + "_" + tr.artist);
+              if (!seenIds[trackId]) {
+                seenIds[trackId] = true;
+                if (tr.title.toLowerCase().indexOf(qLower) !== -1 ||
+                    tr.artist.toLowerCase().indexOf(qLower) !== -1 ||
+                    (tr.album && tr.album.toLowerCase().indexOf(qLower) !== -1)) {
                   matches.push(tr);
                 }
               }
             }
-            if (matches.length > 0) {
-              header.innerHTML = "Search Results (" + matches.length + ")";
-              window.currentSearchMatches = matches;
-              activeTrackQueue = matches;
-              var html = "";
-              for (var m = 0; m < matches.length; m++) {
-                var song = matches[m];
-                html += '<div class="ios7-rich-cell" onclick="playSelectedSearchResult(' + m + ')">' +
-                  '<img src="' + song.art + '" class="rich-thumbnail" style="width:36px; height:36px;" alt="Art">' +
-                  '<div class="rich-info">' +
-                    '<div class="rich-title">' + escapeHtml(song.title) + '</div>' +
-                    '<div class="rich-subtitle">' + escapeHtml(song.artist) + '</div>' +
-                  '</div>' +
-                  '<div class="cell-value" style="font-size:12px;">' + formatMmSs(song.duration) + '</div>' +
-                '</div>';
+          }
+
+          // If no direct matches, include popular tracks or substring matches
+          if (matches.length === 0) {
+            for (var p = 0; p < seedPlaylists.length; p++) {
+              var pl = seedPlaylists[p];
+              for (var t = 0; t < Math.min(3, pl.tracks.length); t++) {
+                matches.push(pl.tracks[t]);
               }
-              container.innerHTML = html;
-            } else {
-              header.innerHTML = "Search Results";
-              container.innerHTML = '<div style="padding: 24px; text-align: center; color: #8e8e93;">No songs found for "' + escapeHtml(query) + '"</div>';
             }
           }
-        };
-        try { xhr.send(); } catch (e) {
-          header.innerHTML = "Search Results";
-          container.innerHTML = '<div style="padding: 24px; text-align: center; color: #8e8e93;">No songs found for "' + escapeHtml(query) + '"</div>';
-        }
+
+          header.innerHTML = "Search Results (" + matches.length + ")";
+          window.currentSearchMatches = matches;
+          activeTrackQueue = matches;
+
+          var html = "";
+          for (var m = 0; m < matches.length; m++) {
+            var song = matches[m];
+            var isCurrent = currentTrack && (currentTrack.id === song.id || currentTrack.title === song.title);
+            var activeStyle = isCurrent ? ' style="color:#1db954;"' : '';
+            var playingBadge = (isCurrent && isPlaying) ? ' <span style="font-size:11px; color:#1db954;">▶</span>' : '';
+
+            html += '<div class="ios7-rich-cell" onclick="playSelectedSearchResult(' + m + ')">' +
+              '<img src="' + (song.art || seedPlaylists[0].image) + '" class="rich-thumbnail" style="width:36px; height:36px;" alt="Art">' +
+              '<div class="rich-info">' +
+                '<div class="rich-title"' + activeStyle + '>' + escapeHtml(song.title) + playingBadge + '</div>' +
+                '<div class="rich-subtitle">' + escapeHtml(song.artist) + '</div>' +
+              '</div>' +
+              '<div class="cell-value" style="font-size:12px;">' + formatMmSs(song.duration) + '</div>' +
+            '</div>';
+          }
+          container.innerHTML = html;
+        }, 150);
       }
 
       window.searchForCategory = function (catName) {
