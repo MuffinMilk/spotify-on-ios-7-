@@ -37,8 +37,10 @@ export default async function handler(req: any, res: any) {
       return sendJson(res, 200, { ok: true, status: 'ready' });
     }
 
-    // Pairing routes
+    // Pairing routes (explicit no-store so iOS 7 Safari never caches pending GET responses)
     if (route === 'pair/new') {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
       const body = method === 'POST' ? await readJsonBody(req) : {};
       const username = String(body.username || getQueryParam(req, 'username') || '').trim() || undefined;
       const record = await createPairingRecord(username);
@@ -50,6 +52,8 @@ export default async function handler(req: any, res: any) {
     }
 
     if (route.startsWith('pair/status/') || route.startsWith('status/')) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
       const code = route.split('/').pop()?.toUpperCase() || '';
       if (!isValidPairingCode(code)) {
         return sendJson(res, 400, { error: 'Invalid pairing code format', status: 'invalid' });
@@ -110,12 +114,13 @@ export default async function handler(req: any, res: any) {
       const code = String(body.code || '').trim();
       const redirectUri = String(body.redirect_uri || '').trim();
       const codeVerifier = String(body.code_verifier || '').trim() || undefined;
+      const clientId = String(body.client_id || '').trim() || undefined;
 
       if (!code || !redirectUri) {
         return sendJson(res, 400, { error: 'Authorization code and redirect_uri are required' });
       }
 
-      const exchanged = await exchangeSpotifyAuthCode({ code, redirectUri, codeVerifier });
+      const exchanged = await exchangeSpotifyAuthCode({ code, redirectUri, codeVerifier, clientId });
       if (exchanged.error || !exchanged.access_token) {
         return sendJson(res, 400, { error: exchanged.error || 'Spotify authorization failed' });
       }

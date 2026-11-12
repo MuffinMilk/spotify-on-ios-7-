@@ -397,5 +397,43 @@
     "createdAt": "2026-11-12T23:10:54.618Z",
     "updatedAt": "2026-11-12T23:10:54.619Z",
     "spotifyDisplayName": "Muffin"
+  },
+  {
+    "username": "tester_1794526996008",
+    "displayName": "tester_1794526996008",
+    "salt": "cab2538a261ca730619a1557aba1fac5",
+    "passwordHash": "a7d52d880747a6d1f1dbd84bfed5f3d5dbbeb729ebf996a6f153e0ac49cf60e636896671a335716b78d1fb29179e15a14504421f6faf71ff4cce1205d074df81",
+    "sessionToken": "d3a8873f745fd2de70c2b347b0667770f178219ae79e3ecd",
+    "createdAt": "2026-11-12T23:43:16.010Z",
+    "updatedAt": "2026-11-12T23:43:16.010Z"
+  },
+  {
+    "username": "unique_1794526996012",
+    "displayName": "unique_1794526996012",
+    "salt": "bc2bc99069d26f329502055114e44508",
+    "passwordHash": "0f6d67c6f209f11b3809d3748683b150dd055c857d1c594ddd76904ac400094126e372a586fe2136e3644659e2474c9c3d7b9ca9c0e0f3316485fae11b85d6da",
+    "sessionToken": "61bf7602be4c5aa658265a98fc1bc2c3d4f40722592ef965",
+    "createdAt": "2026-11-12T23:43:16.012Z",
+    "updatedAt": "2026-11-12T23:43:16.012Z"
+  },
+  {
+    "username": "auth_test_1794526996013",
+    "displayName": "auth_test_1794526996013",
+    "salt": "00c6a3eb9c76f60a10d40f751c62f439",
+    "passwordHash": "9b48d6b96e90326e270f80370b472a2399f2a4295eb3face22c6de2320ad5a7a0820b5f389c7a2e5f32e513829ed560d986437b1fddc99574f798e7dcb113a80",
+    "sessionToken": "d10044cdc09f1a73506c1c2c147deac8d2f50116666f76a7",
+    "createdAt": "2026-11-12T23:43:16.014Z",
+    "updatedAt": "2026-11-12T23:43:16.015Z"
+  },
+  {
+    "username": "spotify_sync_1794526996016",
+    "displayName": "spotify_sync_1794526996016",
+    "salt": "eec77c94a5c8b7ae351c52a3698798e7",
+    "passwordHash": "524d8c937bb06d332e895c20da1f1a91f1cb4f7701683f94ff168606aa754c10c47d1e844c9f19fce8cfed33c3ffd561d0a31dbc287ac3bd3e53ce0d41fbb4bc",
+    "sessionToken": "1b47f6ad541e73a295ad8814ea8266599b494a48a8aeddb4",
+    "spotifyToken": "BQD_mock_spotify_token_xyz",
+    "createdAt": "2026-11-12T23:43:16.017Z",
+    "updatedAt": "2026-11-12T23:43:16.019Z",
+    "spotifyDisplayName": "Muffin"
   }
 ]

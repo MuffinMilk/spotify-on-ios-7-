@@ -63,6 +63,8 @@ app.use(express.static(path.resolve(__dirname, 'public')));
 // API: Pairing Lifecycle (Firestore-backed + Memory Cache)
 // -------------------------------------------------------------
 app.get('/api/pair/new', async (req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
   const username = (req.query.username || '').toString().toLowerCase() || undefined;
   const record = await createPairingRecord(username);
   return res.json({ pairing_code: record.code, code: record.code, status: record.status });
@@ -77,6 +79,8 @@ app.get('/api/config', (_req: Request, res: Response) => {
 });
 
 const handleStatusCheck = async (req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
   const code = (req.params.code || '').toUpperCase();
   if (!isValidPairingCode(code)) {
     return res.status(400).json({ error: 'Invalid pairing code format', status: 'invalid' });
@@ -167,12 +171,13 @@ app.post('/api/spotify/token', async (req: Request, res: Response) => {
   const code = (req.body.code || '').toString().trim();
   const redirectUri = (req.body.redirect_uri || req.body.redirectUri || '').toString().trim();
   const codeVerifier = (req.body.code_verifier || req.body.codeVerifier || '').toString().trim() || undefined;
+  const clientId = (req.body.client_id || req.body.clientId || '').toString().trim() || undefined;
 
   if (!code || !redirectUri) {
     return res.status(400).json({ error: 'Missing OAuth authorization code or redirect_uri' });
   }
 
-  const result = await exchangeSpotifyAuthCode({ code, redirectUri, codeVerifier });
+  const result = await exchangeSpotifyAuthCode({ code, redirectUri, codeVerifier, clientId });
   if (result.error || !result.access_token) {
     return res.status(400).json({ error: result.error || 'Token exchange failed' });
   }

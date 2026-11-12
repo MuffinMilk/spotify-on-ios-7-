@@ -18,14 +18,19 @@
   <!-- Official Spotify Web Playback SDK for Web Speaker / Connect Mode -->
   <script src="https://sdk.scdn.co/spotify-player.js"></script>
 
-  <!-- Firebase SDKs (modern browsers only; ES5 pairing flow uses /api/pair/* over XHR) -->
+  <!-- Firebase SDKs (modern browsers only; ES5 pairing flow uses /api/pair/* & REST over XHR) -->
   <script type="module">
     try {
+      var basePath = window.location.pathname.replace(/\/(index\.html|pair|callback)\/?$/i, '');
+      if (!basePath || basePath === '/') basePath = '/';
+      else if (basePath.charAt(basePath.length - 1) !== '/') basePath += '/';
+      var cfgUrl = basePath + 'firebase-applet-config.json';
+
       Promise.all([
         import('https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js'),
         import('https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js'),
         import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js'),
-        fetch('/firebase-applet-config.json').then(function (r) { return r.json(); })
+        fetch(cfgUrl).then(function (r) { return r.ok ? r.json() : fetch('/firebase-applet-config.json').then(function (r2) { return r2.json(); }); })
       ]).then(function (mods) {
         var appMod = mods[0];
         var authMod = mods[1];
@@ -36,6 +41,8 @@
         var auth = authMod.getAuth(app);
         window.db = db;
         window.auth = auth;
+        // Validate Firestore connectivity on boot
+        fsMod.getDocFromServer(fsMod.doc(db, 'test', 'connection')).catch(function () {});
         window.xpotifyFirebase = {
           syncToken: function (token) {
             if (auth && auth.currentUser && token) {
@@ -1523,9 +1530,9 @@
 
             <!-- Mandatory User Instructions -->
             <div class="instructions-text">
-              Open <a id="pair-portal-link" href="/pair" target="_blank" style="color:#1db954; text-decoration:underline; font-weight:400;">/pair</a> on your phone or computer and enter this code.
+              Open <a id="pair-portal-link" href="#/pair" target="_blank" style="color:#1db954; text-decoration:underline; font-weight:400;">/pair</a> on your phone or computer and enter this code.
               <div style="font-size:10.5px; color:#ff9f0a; margin-top:6px; line-height:1.3; padding:5px 8px; background:rgba(255,159,10,0.1); border-radius:6px; border:1px solid rgba(255,159,10,0.2);">
-                ⚠️ Use our <a href="/pair" target="_blank" style="color:#ffffff; text-decoration:underline;">/pair portal</a> or log in below (<code>spotify.com/pair</code> is TV-only).
+                ⚠️ Use our <a id="pair-portal-link-2" href="#/pair" target="_blank" style="color:#ffffff; text-decoration:underline;">/pair portal</a> or log in below (<code>spotify.com/pair</code> is TV-only).
               </div>
             </div>
 
@@ -1534,6 +1541,9 @@
               <div class="ios7-spinner"></div>
               <span id="polling-text">Connecting to backend...</span>
             </div>
+
+            <!-- Visible OAuth / Pairing Error Banner -->
+            <div id="pairing-auth-error" style="display:none; font-size:11px; color:#ffd6d4; background:rgba(255,59,48,0.16); border:1px solid #ff3b30; border-radius:8px; padding:7px 10px; margin-bottom:10px; text-align:left; line-height:1.35;"></div>
 
             <!-- Primary 1-Tap Pair Button with Live Spotify Token -->
             <button class="ios7-button spotify-connect" id="btn-simulate-pair" onclick="simulatePairSuccess()" style="font-size:14px; height:38px; margin-bottom:7px;">
@@ -1677,7 +1687,7 @@
         <div class="ios7-scroll-body with-player">
           <!-- Playlist Header Cover Hero -->
           <div style="padding: 16px 15px; display: -webkit-box; display: -webkit-flex; display: flex; -webkit-box-align: center; -webkit-align-items: center; align-items: center; background: #121212; border-bottom: 1px solid #222222;">
-            <img id="detail-cover-img" src="/assets/covers/cover_indie_tape.jpg" class="rich-thumbnail" style="width: 60px; height: 60px; margin-right: 14px;" alt="Cover">
+            <img id="detail-cover-img" src="assets/covers/cover_indie_tape.jpg" class="rich-thumbnail" style="width: 60px; height: 60px; margin-right: 14px;" alt="Cover">
             <div>
               <div id="detail-name" style="font-size: 16px; font-weight: 400; color: #ffffff;">Playlist Title</div>
               <div id="detail-owner" style="font-size: 12px; color: #8e8e93; margin-top: 2px;">By Spotify</div>
@@ -1737,7 +1747,7 @@
         <div class="mini-progress-bar">
           <div class="mini-progress-fill" id="mini-progress-fill"></div>
         </div>
-        <img src="/assets/covers/cover_doom_vinyl.jpg" id="mini-art-img" class="mini-art" alt="Track Art">
+        <img src="assets/covers/cover_doom_vinyl.jpg" id="mini-art-img" class="mini-art" alt="Track Art">
         <div class="mini-info">
           <div class="mini-title" id="mini-title-text">Not Playing</div>
           <div class="mini-artist" id="mini-artist-text">Tap a track to begin</div>
@@ -1778,7 +1788,7 @@
         </div>
 
         <div class="artwork-container">
-          <img src="/assets/covers/cover_doom_vinyl.jpg" id="full-art-img" class="full-artwork" alt="Album Cover">
+          <img src="assets/covers/cover_doom_vinyl.jpg" id="full-art-img" class="full-artwork" alt="Album Cover">
         </div>
 
         <div class="full-track-meta">
@@ -2084,28 +2094,55 @@
       var audioCtx = null;
       var livePlaylists = [];
 
-      // Local audio tracks hosted on server for zero-latency iOS 7 playback
+      // Subpath-aware origin & base helpers (works on root Vercel & subpath GitHub Pages)
+      function getCleanOrigin() {
+        return window.location.origin || (window.location.protocol + "//" + window.location.host);
+      }
+
+      function getAppBasePath() {
+        var p = (window.location.pathname || "/").split("?")[0].split("#")[0];
+        p = p.replace(/\/(index\.html|pair|callback)\/?$/i, "");
+        if (!p || p === "/") return "/";
+        if (p.charAt(0) !== "/") p = "/" + p;
+        if (p.charAt(p.length - 1) !== "/") p += "/";
+        return p;
+      }
+
+      function getAppBaseUrl() {
+        return getCleanOrigin().replace(/\/+$/, "") + getAppBasePath();
+      }
+
+      function resolveAppAssetUrl(url) {
+        if (!url || typeof url !== "string") return "";
+        if (url.indexOf("http://") === 0 || url.indexOf("https://") === 0 || url.indexOf("blob:") === 0 || url.indexOf("data:") === 0) {
+          return url;
+        }
+        var clean = url.replace(/^\/+/, "");
+        return getAppBaseUrl() + clean;
+      }
+
+      // Local audio tracks hosted on server/static host for zero-latency iOS 7 playback
       var localAudioUrls = [
-        "/audio/track1.mp3",
-        "/audio/track2.mp3",
-        "/audio/track3.mp3",
-        "/audio/track4.mp3",
-        "/audio/track5.mp3",
-        "/audio/track6.mp3"
+        "audio/track1.mp3",
+        "audio/track2.mp3",
+        "audio/track3.mp3",
+        "audio/track4.mp3",
+        "audio/track5.mp3",
+        "audio/track6.mp3"
       ];
 
       var LOCAL_COVERS = {
-        doom: "/assets/covers/cover_doom_vinyl.jpg",
-        indie: "/assets/covers/cover_indie_tape.jpg",
-        rock: "/assets/covers/cover_industrial_metal.jpg",
-        synth: "/assets/covers/cover_synth_radio.jpg"
+        doom: resolveAppAssetUrl("assets/covers/cover_doom_vinyl.jpg"),
+        indie: resolveAppAssetUrl("assets/covers/cover_indie_tape.jpg"),
+        rock: resolveAppAssetUrl("assets/covers/cover_industrial_metal.jpg"),
+        synth: resolveAppAssetUrl("assets/covers/cover_synth_radio.jpg")
       };
 
       function getSafeArtUrl(url, fallback) {
         if (url && typeof url === "string" && url.indexOf("images.unsplash.com") === -1 && url.length > 4) {
-          return url;
+          return resolveAppAssetUrl(url);
         }
-        return fallback || LOCAL_COVERS.doom;
+        return resolveAppAssetUrl(fallback || LOCAL_COVERS.doom);
       }
 
       function isRealUserSpotifyToken(token) {
@@ -2119,14 +2156,7 @@
 
       function resolveAudioPath(url) {
         if (!url) return "";
-        if (url.indexOf("http://") === 0 || url.indexOf("https://") === 0 || url.indexOf("blob:") === 0) {
-          return url;
-        }
-        var origin = window.location.origin || (window.location.protocol + "//" + window.location.host);
-        if (url.charAt(0) === '/') {
-          return origin + url;
-        }
-        return origin + "/" + url;
+        return resolveAppAssetUrl(url);
       }
 
       function isSnippetUrl(url) {
@@ -2152,6 +2182,137 @@
         }
         var path = localAudioUrls[Math.abs(idx) % localAudioUrls.length];
         return resolveAudioPath(path);
+      }
+
+      // ES5 Firestore REST fallback config for pairing sync across static/multi-origin hosts
+      var FIREBASE_REST_CFG = {
+        projectId: "proverbial-quasar-gv0ns",
+        apiKey: "AIzaSyDwRw5hC68IFTMgHlbtPLoXZ3z2YTxgRKo",
+        dbId: "ai-studio-xpotifyios7spoti-fb7ec2e4-81fc-4790-a7cf-740d0d77eb4a"
+      };
+
+      function getFirestorePairingDocUrl(code) {
+        return "https://firestore.googleapis.com/v1/projects/" + encodeURIComponent(FIREBASE_REST_CFG.projectId) +
+          "/databases/" + encodeURIComponent(FIREBASE_REST_CFG.dbId) +
+          "/documents/pairings/" + encodeURIComponent(code) +
+          "?key=" + encodeURIComponent(FIREBASE_REST_CFG.apiKey);
+      }
+
+      function firestoreGetPairingRest(code, cb) {
+        var cleanCode = (code || "").trim().toUpperCase();
+        if (!cleanCode || cleanCode.length !== 6) {
+          if (cb) cb(null);
+          return;
+        }
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", getFirestorePairingDocUrl(cleanCode), true);
+        xhr.timeout = 4000;
+        xhr.onreadystatechange = function () {
+          if (xhr.readyState === 4) {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try {
+                var doc = JSON.parse(xhr.responseText || "{}");
+                var f = doc.fields || {};
+                var st = f.status && f.status.stringValue ? f.status.stringValue : "pending";
+                var tok = f.accessToken && f.accessToken.stringValue ? f.accessToken.stringValue : "";
+                var uname = f.username && f.username.stringValue ? f.username.stringValue : "";
+                var createdAt = f.createdAt && f.createdAt.stringValue ? f.createdAt.stringValue : "";
+                cb({ status: st, access_token: tok, username: uname, createdAt: createdAt });
+                return;
+              } catch (e) {}
+            }
+            cb(null);
+          }
+        };
+        xhr.onerror = function () { cb(null); };
+        xhr.ontimeout = function () { cb(null); };
+        try { xhr.send(); } catch (e) { cb(null); }
+      }
+
+      function firestoreCreatePendingRest(code, cb) {
+        var cleanCode = (code || "").trim().toUpperCase();
+        if (!cleanCode || cleanCode.length !== 6) {
+          if (cb) cb(false);
+          return;
+        }
+        var nowIso = new Date().toISOString();
+        var url = "https://firestore.googleapis.com/v1/projects/" + encodeURIComponent(FIREBASE_REST_CFG.projectId) +
+          "/databases/" + encodeURIComponent(FIREBASE_REST_CFG.dbId) +
+          "/documents/pairings?documentId=" + encodeURIComponent(cleanCode) +
+          "&key=" + encodeURIComponent(FIREBASE_REST_CFG.apiKey);
+        var xhr = new XMLHttpRequest();
+        xhr.open("POST", url, true);
+        xhr.setRequestHeader("Content-Type", "application/json");
+        xhr.timeout = 4000;
+        xhr.onreadystatechange = function () {
+          if (xhr.readyState === 4 && cb) {
+            cb((xhr.status >= 200 && xhr.status < 300) || xhr.status === 409);
+          }
+        };
+        xhr.onerror = function () { if (cb) cb(false); };
+        xhr.ontimeout = function () { if (cb) cb(false); };
+        try {
+          xhr.send(JSON.stringify({
+            fields: {
+              code: { stringValue: cleanCode },
+              status: { stringValue: "pending" },
+              createdAt: { stringValue: nowIso },
+              updatedAt: { stringValue: nowIso }
+            }
+          }));
+        } catch (e) { if (cb) cb(false); }
+      }
+
+      function firestoreApprovePairingRest(code, token, username, refreshToken, cb) {
+        var cleanCode = (code || "").trim().toUpperCase();
+        if (!cleanCode || cleanCode.length !== 6) {
+          if (cb) cb(false);
+          return;
+        }
+        var finalToken = (token && String(token).trim()) ? String(token).trim() : ("BQD_xpotify_app_token_" + cleanCode + "_" + Date.now());
+        firestoreGetPairingRest(cleanCode, function (existing) {
+          var nowIso = new Date().toISOString();
+          function patchDoc(createdIso) {
+            var fields = {
+              code: { stringValue: cleanCode },
+              status: { stringValue: "paired" },
+              accessToken: { stringValue: finalToken.slice(0, 1024) },
+              expiresAt: { integerValue: String(Date.now() + 3600000) },
+              createdAt: { stringValue: createdIso || nowIso },
+              updatedAt: { stringValue: nowIso }
+            };
+            if (refreshToken) {
+              fields.refreshToken = { stringValue: String(refreshToken).slice(0, 1024) };
+            }
+            if (username) {
+              fields.username = { stringValue: String(username).toLowerCase().slice(0, 64) };
+            }
+            var patchXhr = new XMLHttpRequest();
+            patchXhr.open("PATCH", getFirestorePairingDocUrl(cleanCode), true);
+            patchXhr.setRequestHeader("Content-Type", "application/json");
+            patchXhr.timeout = 4500;
+            patchXhr.onreadystatechange = function () {
+              if (patchXhr.readyState === 4 && cb) {
+                cb(patchXhr.status >= 200 && patchXhr.status < 300, finalToken);
+              }
+            };
+            patchXhr.onerror = function () { if (cb) cb(false, finalToken); };
+            patchXhr.ontimeout = function () { if (cb) cb(false, finalToken); };
+            try { patchXhr.send(JSON.stringify({ fields: fields })); } catch (e) { if (cb) cb(false, finalToken); }
+          }
+
+          if (existing && existing.status === "paired" && existing.access_token) {
+            if (cb) cb(true, existing.access_token);
+            return;
+          }
+          if (!existing) {
+            firestoreCreatePendingRest(cleanCode, function () {
+              patchDoc(nowIso);
+            });
+          } else {
+            patchDoc(existing.createdAt || nowIso);
+          }
+        });
       }
 
       // Seed data with local generated covers and full-length MP3 streams
@@ -2280,6 +2441,92 @@
         return text;
       }
 
+      function writeShortCookie(name, val) {
+        try {
+          document.cookie = encodeURIComponent(name) + "=" + encodeURIComponent(val) + "; path=/; max-age=600; SameSite=Lax";
+        } catch (e) {}
+      }
+
+      function readShortCookie(name) {
+        try {
+          var prefix = encodeURIComponent(name) + "=";
+          var parts = (document.cookie || "").split(";");
+          for (var i = 0; i < parts.length; i++) {
+            var c = parts[i].replace(/^\s+/, "");
+            if (c.indexOf(prefix) === 0) {
+              return decodeURIComponent(c.substring(prefix.length));
+            }
+          }
+        } catch (e) {}
+        return "";
+      }
+
+      // Pure-ES5 SHA-256 + Base64URL for iPhone 5 (iOS 7.1.2) PKCE without crypto.subtle
+      function es5Sha256Base64Url(ascii) {
+        function rightRotate(value, amount) {
+          return (value >>> amount) | (value << (32 - amount));
+        }
+        var mathPow = Math.pow;
+        var maxWord = mathPow(2, 32);
+        var i, j;
+        var result = "";
+        var words = [];
+        var asciiBitLength = ascii.length * 8;
+        var hash = [];
+        var k = [];
+        var primeCounter = 0;
+        var isComposite = {};
+        for (var candidate = 2; primeCounter < 64; candidate++) {
+          if (!isComposite[candidate]) {
+            for (i = 0; i < 313; i += candidate) {
+              isComposite[i] = candidate;
+            }
+            hash[primeCounter] = (mathPow(candidate, 0.5) * maxWord) | 0;
+            k[primeCounter++] = (mathPow(candidate, 1 / 3) * maxWord) | 0;
+          }
+        }
+        ascii += "\x80";
+        while (ascii.length % 64 - 56) ascii += "\x00";
+        for (i = 0; i < ascii.length; i++) {
+          j = ascii.charCodeAt(i);
+          words[i >> 2] |= j << ((3 - i) % 4) * 8;
+        }
+        words[words.length] = ((asciiBitLength / maxWord) | 0);
+        words[words.length] = (asciiBitLength | 0);
+        for (j = 0; j < words.length;) {
+          var w = words.slice(j, j += 16);
+          var oldHash = hash.slice(0, 8);
+          for (i = 0; i < 64; i++) {
+            var w15 = w[i - 15], w2 = w[i - 2];
+            var a = hash[0], e = hash[4];
+            var temp1 = hash[7]
+              + (rightRotate(e, 6) ^ rightRotate(e, 11) ^ rightRotate(e, 25))
+              + ((e & hash[5]) ^ ((~e) & hash[6]))
+              + k[i]
+              + (w[i] = (i < 16) ? w[i] : (
+                  w[i - 16]
+                  + (rightRotate(w15, 7) ^ rightRotate(w15, 18) ^ (w15 >>> 3))
+                  + w[i - 7]
+                  + (rightRotate(w2, 17) ^ rightRotate(w2, 19) ^ (w2 >>> 10))
+                ) | 0);
+            var temp2 = (rightRotate(a, 2) ^ rightRotate(a, 13) ^ rightRotate(a, 22))
+              + ((a & hash[1]) ^ (a & hash[2]) ^ (hash[1] & hash[2]));
+            hash = [(temp1 + temp2) | 0].concat(hash.slice(0, 7));
+            hash[4] = (hash[4] + temp1) | 0;
+          }
+          for (i = 0; i < 8; i++) {
+            hash[i] = (hash[i] + oldHash[i]) | 0;
+          }
+        }
+        for (i = 0; i < 8; i++) {
+          for (j = 3; j + 1; j--) {
+            var b = (hash[i] >> (j * 8)) & 255;
+            result += String.fromCharCode(b);
+          }
+        }
+        return btoa(result).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+      }
+
       function sha256(plain) {
         var encoder = new TextEncoder();
         var data = encoder.encode(plain);
@@ -2321,7 +2568,7 @@
         var portal = document.getElementById("web-pair-portal");
         if (portal) portal.className = "";
         if (window.history && window.history.replaceState) {
-          window.history.replaceState(null, "", "/");
+          window.history.replaceState(null, "", getAppBasePath());
         }
         var token = safeStorage.get("access_token");
         if (token && token.length > 5) {
@@ -2339,24 +2586,57 @@
           return;
         }
         showPortalFeedback("info", "Pairing device " + code + "...");
+        var activeToken = safeStorage.get("access_token") || "";
+        var realToken = isRealUserSpotifyToken(activeToken) ? activeToken : "";
+        var refreshTok = safeStorage.get("refresh_token") || "";
+        var uname = safeStorage.get("username") || undefined;
+
         var xhr = new XMLHttpRequest();
         xhr.open("POST", getBackendBaseUrl() + "/api/pair/approve", true);
         xhr.setRequestHeader("Content-Type", "application/json");
+        xhr.timeout = 4500;
         xhr.onreadystatechange = function () {
           if (xhr.readyState === 4) {
-            try {
-              var res = JSON.parse(xhr.responseText || "{}");
-              if (xhr.status >= 200 && xhr.status < 300 && res.success) {
-                showPortalFeedback("success", "Device " + code + " paired! Look at your iPhone 5 Safari screen — it will connect automatically within a few seconds.");
-                return;
-              }
-              showPortalFeedback("error", res.error || "Could not approve pairing code. Please check the 6-character code.");
-            } catch (e) {
-              showPortalFeedback("error", "Pairing server returned an unexpected response.");
+            var backendOk = false;
+            var resolvedToken = realToken;
+            var errMsg = "";
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try {
+                var res = JSON.parse(xhr.responseText || "{}");
+                if (res && res.success) {
+                  backendOk = true;
+                  resolvedToken = res.access_token || resolvedToken;
+                } else if (res && res.error) {
+                  errMsg = res.error;
+                }
+              } catch (e) {}
             }
+
+            // Always mirror paired state into Firestore REST so iPhone 5 on any host/origin picks it up
+            firestoreApprovePairingRest(code, resolvedToken, uname, refreshTok, function (fsOk) {
+              if (backendOk || fsOk) {
+                showPortalFeedback("success", "Device " + code + " paired! Look at your iPhone 5 Safari screen — it will connect automatically within a few seconds.");
+              } else {
+                showPortalFeedback("error", errMsg || "Could not approve pairing code. Please check the 6-character code.");
+              }
+            });
           }
         };
-        xhr.send(JSON.stringify({ code: code, username: safeStorage.get("username") || undefined }));
+        xhr.onerror = function () {
+          firestoreApprovePairingRest(code, realToken, uname, refreshTok, function (fsOk) {
+            if (fsOk) {
+              showPortalFeedback("success", "Device " + code + " paired! Look at your iPhone 5 Safari screen — it will connect automatically within a few seconds.");
+            } else {
+              showPortalFeedback("error", "Could not reach pairing server. Check your network and try again.");
+            }
+          });
+        };
+        xhr.send(JSON.stringify({
+          code: code,
+          token: realToken || undefined,
+          refresh_token: refreshTok || undefined,
+          username: uname
+        }));
       };
 
       window.portalLoginWithSpotify = function () {
@@ -2388,9 +2668,54 @@
 
       function parseQueryParam(searchStr, key) {
         if (!searchStr) return "";
-        var regex = new RegExp("[?&]" + key + "=([^&]*)");
+        var regex = new RegExp("[?&#]" + key + "=([^&#]*)");
         var match = searchStr.match(regex);
         return (match && match[1]) ? decodeURIComponent(match[1].replace(/\+/g, " ")) : "";
+      }
+
+      function isSpotifyOAuthCode(code, pathname) {
+        if (!code || typeof code !== "string") return false;
+        if (code.replace(/^\s+|\s+$/g, "").length <= 20) return false;
+        var cleanPath = (pathname || "/").split("?")[0].toLowerCase();
+        if (/\/pair\/?$/.test(cleanPath)) return false;
+        return true;
+      }
+
+      function exchangePkceDirectlyWithSpotify(clientId, authCode, redirectUri, codeVerifier, onDone) {
+        if (!codeVerifier) {
+          onDone({ error: "Missing PKCE verifier from login session. Please tap Log In with Spotify Account again." });
+          return;
+        }
+        var formBody = "grant_type=authorization_code" +
+          "&client_id=" + encodeURIComponent(clientId) +
+          "&code=" + encodeURIComponent(authCode) +
+          "&redirect_uri=" + encodeURIComponent(redirectUri) +
+          "&code_verifier=" + encodeURIComponent(codeVerifier);
+
+        var spXhr = new XMLHttpRequest();
+        spXhr.open("POST", "https://accounts.spotify.com/api/token", true);
+        spXhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+        spXhr.timeout = 8000;
+        spXhr.onreadystatechange = function () {
+          if (spXhr.readyState === 4) {
+            var spData = {};
+            try { spData = JSON.parse(spXhr.responseText || "{}"); } catch (e) {}
+            if (spXhr.status >= 200 && spXhr.status < 300 && spData && spData.access_token) {
+              onDone({ data: spData });
+            } else {
+              onDone({ error: spData.error_description || spData.error || ("Spotify direct PKCE exchange failed (" + spXhr.status + ")") });
+            }
+          }
+        };
+        spXhr.onerror = function () {
+          onDone({ error: "Network error reaching Spotify accounts.spotify.com/api/token." });
+        };
+        spXhr.ontimeout = function () {
+          onDone({ error: "Timed out waiting for Spotify token exchange." });
+        };
+        try { spXhr.send(formBody); } catch (e) {
+          onDone({ error: "Could not send Spotify PKCE request." });
+        }
       }
 
       function checkOAuthCallback(callback) {
@@ -2401,62 +2726,124 @@
         }
 
         var search = window.location.search || "";
-        if (search.indexOf("code=") !== -1 && (window.location.pathname.indexOf("/callback") === 0 || search.indexOf("state=") !== -1)) {
-          var authCode = parseQueryParam(search, "code");
-          var stateVal = parseQueryParam(search, "state");
-          var codeVerifier = safeStorage.get("spotify_code_verifier") || "";
-          var redirectUri = safeStorage.get("spotify_last_redirect_uri") || getCleanRedirectUri();
+        var oauthErr = parseQueryParam(search, "error");
+        if (oauthErr) {
+          if (window.history && window.history.replaceState) {
+            window.history.replaceState(null, "", getAppBasePath());
+          }
+          callback({ error: "Spotify authorization declined: " + oauthErr });
+          return;
+        }
+
+        var authCode = parseQueryParam(search, "code");
+        var stateVal = parseQueryParam(search, "state");
+        if (authCode && isSpotifyOAuthCode(authCode, window.location.pathname || "/")) {
+          var codeVerifier = safeStorage.get("spotify_code_verifier") || readShortCookie("xpotify_pkce_verifier") || "";
+          var clientId = safeStorage.get("spotify_client_id") || readShortCookie("xpotify_client_id") || serverSpotifyClientId || "74009b25ca824b099fb2415105fb9ca6";
+          var exactLandingUri = getCleanOrigin() + (window.location.pathname || "/");
+          var redirectUri = safeStorage.get("spotify_last_redirect_uri") || readShortCookie("xpotify_last_redir") || exactLandingUri;
+
+          function finalizeOAuthSuccess(data) {
+            safeStorage.remove("spotify_code_verifier");
+            if (stateVal && stateVal.indexOf("PAIR:") === 0) {
+              var pairCode = stateVal.substring(5).trim().toUpperCase();
+              var approveXhr = new XMLHttpRequest();
+              approveXhr.open("POST", getBackendBaseUrl() + "/api/pair/approve", true);
+              approveXhr.setRequestHeader("Content-Type", "application/json");
+              approveXhr.timeout = 4500;
+              approveXhr.onreadystatechange = function () {
+                if (approveXhr.readyState === 4) {
+                  var okBackend = approveXhr.status >= 200 && approveXhr.status < 300;
+                  firestoreApprovePairingRest(pairCode, data.access_token, safeStorage.get("username") || undefined, data.refresh_token || "", function (fsOk) {
+                    if (window.history && window.history.replaceState) {
+                      window.history.replaceState(null, "", getAppBasePath() + "#/pair?code=" + encodeURIComponent(pairCode));
+                    }
+                    callback({
+                      pairedPortalCode: pairCode,
+                      portalPairedSuccess: okBackend || fsOk
+                    });
+                  });
+                }
+              };
+              approveXhr.onerror = function () {
+                firestoreApprovePairingRest(pairCode, data.access_token, safeStorage.get("username") || undefined, data.refresh_token || "", function (fsOk) {
+                  if (window.history && window.history.replaceState) {
+                    window.history.replaceState(null, "", getAppBasePath() + "#/pair?code=" + encodeURIComponent(pairCode));
+                  }
+                  callback({ pairedPortalCode: pairCode, portalPairedSuccess: fsOk });
+                });
+              };
+              approveXhr.send(JSON.stringify({
+                code: pairCode,
+                token: data.access_token,
+                refresh_token: data.refresh_token || "",
+                username: safeStorage.get("username") || undefined
+              }));
+              return;
+            }
+
+            safeStorage.set("access_token", data.access_token);
+            if (data.refresh_token) safeStorage.set("refresh_token", data.refresh_token);
+            syncCurrentTokenToFirestore(data.access_token);
+            if (window.history && window.history.replaceState) {
+              window.history.replaceState(null, "", getAppBasePath());
+            }
+            callback({ token: data.access_token });
+          }
+
+          function handleTokenFailure(msg) {
+            if (window.history && window.history.replaceState) {
+              window.history.replaceState(null, "", getAppBasePath());
+            }
+            callback({ error: msg || "Spotify OAuth exchange failed." });
+          }
 
           var xhr = new XMLHttpRequest();
           xhr.open("POST", getBackendBaseUrl() + "/api/spotify/token", true);
           xhr.setRequestHeader("Content-Type", "application/json");
+          xhr.timeout = 5000;
           xhr.onreadystatechange = function () {
             if (xhr.readyState === 4) {
               var data = {};
               try { data = JSON.parse(xhr.responseText || "{}"); } catch (e) {}
               if (xhr.status >= 200 && xhr.status < 300 && data && data.access_token) {
-                if (stateVal && stateVal.indexOf("PAIR:") === 0) {
-                  var pairCode = stateVal.substring(5).trim().toUpperCase();
-                  var approveXhr = new XMLHttpRequest();
-                  approveXhr.open("POST", getBackendBaseUrl() + "/api/pair/approve", true);
-                  approveXhr.setRequestHeader("Content-Type", "application/json");
-                  approveXhr.onreadystatechange = function () {
-                    if (approveXhr.readyState === 4) {
-                      if (window.history && window.history.replaceState) {
-                        window.history.replaceState(null, "", "/pair?code=" + encodeURIComponent(pairCode));
-                      }
-                      callback({
-                        pairedPortalCode: pairCode,
-                        portalPairedSuccess: approveXhr.status >= 200 && approveXhr.status < 300
-                      });
-                    }
-                  };
-                  approveXhr.send(JSON.stringify({
-                    code: pairCode,
-                    token: data.access_token,
-                    refresh_token: data.refresh_token || "",
-                    username: safeStorage.get("username") || undefined
-                  }));
-                  return;
-                }
-
-                safeStorage.set("access_token", data.access_token);
-                if (data.refresh_token) safeStorage.set("refresh_token", data.refresh_token);
-                syncCurrentTokenToFirestore(data.access_token);
-                if (window.history && window.history.replaceState) {
-                  window.history.replaceState(null, "", "/");
-                }
-                callback({ token: data.access_token });
+                finalizeOAuthSuccess(data);
                 return;
               }
 
-              callback({ error: data.error || "Spotify OAuth exchange failed." });
+              // Static host (404/405 e.g. GitHub Pages) or PKCE browser fallback: exchange directly with Spotify
+              if (codeVerifier) {
+                exchangePkceDirectlyWithSpotify(clientId, authCode, redirectUri, codeVerifier, function (pkceRes) {
+                  if (pkceRes && pkceRes.data && pkceRes.data.access_token) {
+                    finalizeOAuthSuccess(pkceRes.data);
+                  } else {
+                    handleTokenFailure((pkceRes && pkceRes.error) || data.error || "Spotify OAuth exchange failed.");
+                  }
+                });
+                return;
+              }
+
+              handleTokenFailure(data.error || ("Spotify token endpoint unavailable (" + xhr.status + ")."));
+            }
+          };
+          xhr.onerror = function () {
+            if (codeVerifier) {
+              exchangePkceDirectlyWithSpotify(clientId, authCode, redirectUri, codeVerifier, function (pkceRes) {
+                if (pkceRes && pkceRes.data && pkceRes.data.access_token) {
+                  finalizeOAuthSuccess(pkceRes.data);
+                } else {
+                  handleTokenFailure(pkceRes && pkceRes.error);
+                }
+              });
+            } else {
+              handleTokenFailure("Network error during Spotify OAuth exchange.");
             }
           };
           xhr.send(JSON.stringify({
             code: authCode,
             redirect_uri: redirectUri,
-            code_verifier: codeVerifier
+            code_verifier: codeVerifier,
+            client_id: clientId
           }));
           return;
         }
@@ -2465,10 +2852,6 @@
 
       var serverSpotifyClientId = "";
       var serverSpotifyRedirectUri = "";
-
-      function getCleanOrigin() {
-        return window.location.origin || (window.location.protocol + "//" + window.location.host);
-      }
 
       function getCleanRedirectUri() {
         var inputEl = document.getElementById("spotify-redirect-uri-input");
@@ -2482,11 +2865,22 @@
         if (serverSpotifyRedirectUri) {
           return serverSpotifyRedirectUri;
         }
+        var basePath = getAppBasePath();
+        if (basePath !== "/") {
+          return getAppBaseUrl();
+        }
         return getCleanOrigin() + "/callback";
       }
 
       window.applyRedirectUriPreset = function (suffix) {
-        var uri = getCleanOrigin() + suffix;
+        var uri;
+        if (getAppBasePath() !== "/") {
+          if (suffix === "/callback") uri = getAppBaseUrl() + "callback";
+          else if (suffix === "/") uri = getAppBaseUrl();
+          else uri = getAppBaseUrl().replace(/\/+$/, "");
+        } else {
+          uri = getCleanOrigin() + suffix;
+        }
         var inputEl = document.getElementById("spotify-redirect-uri-input");
         if (inputEl) inputEl.value = uri;
         safeStorage.set("spotify_redirect_uri", uri);
@@ -2558,9 +2952,18 @@
 
         fetchServerSpotifyConfig();
 
+        // Sync initial HTML cover tags so subpath hosts (e.g. GitHub Pages) never 404 on /assets/covers/
+        var miniArtEl = document.getElementById("mini-art-img");
+        if (miniArtEl) miniArtEl.src = LOCAL_COVERS.doom;
+        var fullArtEl = document.getElementById("full-art-img");
+        if (fullArtEl) fullArtEl.src = LOCAL_COVERS.doom;
+        var detailCoverEl = document.getElementById("detail-cover-img");
+        if (detailCoverEl) detailCoverEl.src = LOCAL_COVERS.indie;
+
         var path = window.location.pathname || "/";
         var rawSearch = window.location.search || "";
-        if (rawSearch.indexOf("code=") !== -1 && (path.indexOf("/callback") === 0 || rawSearch.indexOf("state=PAIR") !== -1)) {
+        var earlyCode = parseQueryParam(rawSearch, "code");
+        if (earlyCode && isSpotifyOAuthCode(earlyCode, path) && rawSearch.indexOf("state=PAIR") !== -1) {
           openWebPairPortal("", "Completing Spotify Authorization...", "info", "Exchanging authorization with Spotify...");
         }
 
@@ -2577,8 +2980,8 @@
             return;
           }
 
-          if (path.indexOf("/pair") === 0 || window.location.hash.indexOf("#/pair") === 0) {
-            var urlCode = parseQueryParam(window.location.search, "code").toUpperCase();
+          if (/\/pair\/?$/i.test(path) || (window.location.hash || "").indexOf("#/pair") === 0) {
+            var urlCode = (parseQueryParam(window.location.search, "code") || parseQueryParam(window.location.hash, "code")).toUpperCase();
             openWebPairPortal(
               urlCode,
               "Pair with Xpotify",
@@ -2589,19 +2992,44 @@
 
           var token = (authOutcome && authOutcome.token) || safeStorage.get("access_token");
           var username = safeStorage.get("username");
+          var spDisplayName = safeStorage.get("spotify_display_name");
+
+          var authErrBox = document.getElementById("pairing-auth-error");
+          if (authErrBox) {
+            if (authOutcome && authOutcome.error) {
+              authErrBox.style.display = "block";
+              authErrBox.innerHTML = escapeHtml(authOutcome.error);
+              showPortalFeedback("error", authOutcome.error);
+            } else {
+              authErrBox.style.display = "none";
+              authErrBox.innerHTML = "";
+            }
+          }
 
           if (username) {
             var nameEl = document.getElementById("user-display-name");
             var subEl = document.getElementById("user-account-subtitle");
             if (nameEl) nameEl.innerText = "Account: " + username;
-            if (subEl) subEl.innerText = "Tap to manage account";
+            if (subEl) subEl.innerText = isRealUserSpotifyToken(token) ? "Spotify Account Connected" : "Tap to manage account";
             document.getElementById("pair-nav-account-btn").innerText = "👤 " + username;
             document.getElementById("library-nav-account-btn").innerText = "👤 " + username;
             document.getElementById("pair-account-banner").style.display = "block";
             document.getElementById("pair-account-name").innerText = username;
+          } else if (isRealUserSpotifyToken(token)) {
+            var dNameEl = document.getElementById("user-display-name");
+            var dSubEl = document.getElementById("user-account-subtitle");
+            var syncBadgeEl = document.getElementById("user-spotify-sync-badge");
+            if (dNameEl) dNameEl.innerText = spDisplayName ? ("Spotify: " + spDisplayName) : "Spotify Account";
+            if (dSubEl) dSubEl.innerText = "Connected via Spotify OAuth";
+            if (syncBadgeEl) syncBadgeEl.innerText = "Live";
+          } else if (token && token.length > 5) {
+            var gSubEl = document.getElementById("user-account-subtitle");
+            var gBadgeEl = document.getElementById("user-spotify-sync-badge");
+            if (gSubEl) gSubEl.innerText = "Tap to link a Spotify or Xpotify account";
+            if (gBadgeEl) gBadgeEl.innerText = "Paired";
           }
 
-          if (token && token.length > 5) {
+          if (token && token.length > 5 && !(authOutcome && authOutcome.error && !isRealUserSpotifyToken(token))) {
             showMainDashboard();
           } else {
             showPairDeviceScreen();
@@ -2652,11 +3080,22 @@
         var backendUrl = getBackendBaseUrl();
         setPollingStatus(true, "Connecting to backend...");
 
-        // If backend is the default ngrok or same origin, use our server endpoint first
-        var backendUrl = getBackendBaseUrl();
-        var reqUrl = backendUrl + "/api/pair/new";
+        var reqUrl = backendUrl + "/api/pair/new?_t=" + Date.now();
         if (reqUrl.indexOf("ngrok") !== -1) {
-          reqUrl += (reqUrl.indexOf("?") === -1 ? "?" : "&") + "ngrok-skip-browser-warning=69420";
+          reqUrl += "&ngrok-skip-browser-warning=69420";
+        }
+
+        function handleCodeReady(code, fromServer) {
+          if (!code || code.length !== 6) {
+            code = createRandom6Code();
+            fromServer = false;
+          }
+          displayPairingCode(code);
+          if (!fromServer) {
+            // Static host (e.g. GitHub Pages) or offline backend -> register pending doc in Firestore directly
+            firestoreCreatePendingRest(code);
+          }
+          startPollingBackendStatus(code);
         }
 
         var xhr = new XMLHttpRequest();
@@ -2666,43 +3105,31 @@
         xhr.onreadystatechange = function () {
           if (xhr.readyState === 4) {
             var code = "";
+            var fromServer = false;
             if (xhr.status >= 200 && xhr.status < 300) {
               try {
                 var json = JSON.parse(xhr.responseText);
                 code = json.pairing_code || json.code || json.pair_code;
+                if (code && code.length === 6) fromServer = true;
               } catch (e) {
                 var raw = (xhr.responseText || "").trim();
-                if (raw.length === 6) code = raw;
+                if (raw.length === 6) {
+                  code = raw;
+                  fromServer = true;
+                }
               }
             }
-
-            if (!code || code.length !== 6) {
-              code = createRandom6Code();
-            }
-
-            displayPairingCode(code);
-            startPollingBackendStatus(code);
+            handleCodeReady(code, fromServer);
           }
         };
 
-        xhr.ontimeout = function () {
-          var code = createRandom6Code();
-          displayPairingCode(code);
-          startPollingBackendStatus(code);
-        };
-
-        xhr.onerror = function () {
-          var code = createRandom6Code();
-          displayPairingCode(code);
-          startPollingBackendStatus(code);
-        };
+        xhr.ontimeout = function () { handleCodeReady("", false); };
+        xhr.onerror = function () { handleCodeReady("", false); };
 
         try {
           xhr.send();
         } catch (e) {
-          var code = createRandom6Code();
-          displayPairingCode(code);
-          startPollingBackendStatus(code);
+          handleCodeReady("", false);
         }
       }
 
@@ -2711,10 +3138,11 @@
         var el = document.getElementById("pairing-code-display");
         if (el) el.innerHTML = currentPairingCode;
 
+        var portalHref = getAppBasePath() + "#/pair?code=" + encodeURIComponent(currentPairingCode);
         var link = document.getElementById("pair-portal-link");
-        if (link) {
-          link.href = "/pair?code=" + encodeURIComponent(currentPairingCode);
-        }
+        if (link) link.href = portalHref;
+        var link2 = document.getElementById("pair-portal-link-2");
+        if (link2) link2.href = portalHref;
 
         var preview = document.getElementById("poll-preview-url");
         if (preview) {
@@ -2729,17 +3157,20 @@
         }
         pollCount = 0;
         var backendUrl = getBackendBaseUrl();
-        var statusUrl = backendUrl + "/api/pair/status/" + encodeURIComponent(code);
-
-        if (statusUrl.indexOf("ngrok") !== -1) {
-          statusUrl += (statusUrl.indexOf("?") === -1 ? "?" : "&") + "ngrok-skip-browser-warning=69420";
-        }
+        var baseStatusUrl = backendUrl + "/api/pair/status/" + encodeURIComponent(code);
 
         setPollingStatus(true, "Awaiting approval for code: " + code);
 
-        pollTimer = setInterval(function () {
+        function checkOnce() {
+          if (currentPairingCode !== code) return;
           pollCount++;
-          setPollingStatus(true, "Checking status every 4s (#" + pollCount + ")...");
+          setPollingStatus(true, "Checking status every 3.5s (#" + pollCount + ")...");
+
+          // Cache-busted GET prevents iOS 7.1.2 Safari from caching "pending"
+          var statusUrl = baseStatusUrl + "?_t=" + Date.now();
+          if (statusUrl.indexOf("ngrok") !== -1) {
+            statusUrl += "&ngrok-skip-browser-warning=69420";
+          }
 
           var xhr = new XMLHttpRequest();
           xhr.open("GET", statusUrl, true);
@@ -2753,16 +3184,40 @@
                   if (data && (data.status === "paired" || data.access_token)) {
                     var token = data.access_token || "spotify_token_" + code;
                     completePairing(token);
+                    return;
                   }
                 } catch (e) {}
               }
+              // Cross-host / GitHub Pages / multi-instance fallback: query Firestore directly
+              firestoreGetPairingRest(code, function (fsRec) {
+                if (fsRec && fsRec.status === "paired") {
+                  completePairing(fsRec.access_token || ("BQD_xpotify_app_token_" + code));
+                }
+              });
             }
+          };
+
+          xhr.onerror = function () {
+            firestoreGetPairingRest(code, function (fsRec) {
+              if (fsRec && fsRec.status === "paired") {
+                completePairing(fsRec.access_token || ("BQD_xpotify_app_token_" + code));
+              }
+            });
           };
 
           try {
             xhr.send();
-          } catch (e) {}
-        }, 4000);
+          } catch (e) {
+            firestoreGetPairingRest(code, function (fsRec) {
+              if (fsRec && fsRec.status === "paired") {
+                completePairing(fsRec.access_token || ("BQD_xpotify_app_token_" + code));
+              }
+            });
+          }
+        }
+
+        setTimeout(checkOnce, 600);
+        pollTimer = setInterval(checkOnce, 3500);
       }
 
       function setPollingStatus(active, message) {
@@ -2778,6 +3233,13 @@
 
         safeStorage.set("access_token", accessToken);
         setPollingStatus(false, "Device Paired! Loading...");
+
+        if (!isRealUserSpotifyToken(accessToken) && !safeStorage.get("username")) {
+          var gSubEl = document.getElementById("user-account-subtitle");
+          var gBadgeEl = document.getElementById("user-spotify-sync-badge");
+          if (gSubEl) gSubEl.innerText = "Paired via code — tap to link Spotify";
+          if (gBadgeEl) gBadgeEl.innerText = "Paired";
+        }
 
         setTimeout(function () {
           showMainDashboard();
@@ -2853,13 +3315,16 @@
         var clientId = (input ? input.value.trim() : "") || safeStorage.get("spotify_client_id") || serverSpotifyClientId || "74009b25ca824b099fb2415105fb9ca6";
 
         safeStorage.set("spotify_client_id", clientId);
+        writeShortCookie("xpotify_client_id", clientId);
         var codeVerifier = generateRandomString(64);
         safeStorage.set("spotify_code_verifier", codeVerifier);
+        writeShortCookie("xpotify_pkce_verifier", codeVerifier);
 
         function triggerRedirect(challenge) {
           var redirectUri = getCleanRedirectUri();
           safeStorage.set("spotify_redirect_uri", redirectUri);
           safeStorage.set("spotify_last_redirect_uri", redirectUri);
+          writeShortCookie("xpotify_last_redir", redirectUri);
           var scopes = 'user-read-private playlist-read-private user-library-read user-read-email user-modify-playback-state user-read-playback-state streaming app-remote-control';
 
           var authUrl = 'https://accounts.spotify.com/authorize?' +
@@ -2878,10 +3343,11 @@
           sha256(codeVerifier).then(function (hashed) {
             triggerRedirect(base64encode(hashed));
           }).catch(function () {
-            triggerRedirect(null);
+            triggerRedirect(es5Sha256Base64Url(codeVerifier));
           });
         } else {
-          triggerRedirect(null);
+          // Pure ES5 PKCE SHA-256 works on iPhone 5 iOS 7.1.2 Safari too
+          triggerRedirect(es5Sha256Base64Url(codeVerifier));
         }
       }
 
@@ -2931,17 +3397,30 @@
         var xhr = new XMLHttpRequest();
         xhr.open("GET", "https://api.spotify.com/v1/me", true);
         xhr.setRequestHeader("Authorization", "Bearer " + token);
-        xhr.timeout = 4000;
+        xhr.timeout = 4500;
 
         xhr.onreadystatechange = function () {
-          if (xhr.readyState === 4 && xhr.status === 200) {
-            try {
-              var user = JSON.parse(xhr.responseText);
-              if (user && user.display_name) {
+          if (xhr.readyState === 4) {
+            if (xhr.status === 200) {
+              try {
+                var user = JSON.parse(xhr.responseText);
+                var displayName = (user && (user.display_name || user.id)) ? (user.display_name || user.id) : "Spotify User";
+                safeStorage.set("spotify_display_name", displayName);
                 var el = document.getElementById("user-display-name");
-                if (el) el.innerHTML = escapeHtml(user.display_name);
-              }
-            } catch (e) {}
+                var subEl = document.getElementById("user-account-subtitle");
+                var badgeEl = document.getElementById("user-spotify-sync-badge");
+                var navBtn = document.getElementById("library-nav-account-btn");
+                if (el) el.innerHTML = "Spotify: " + escapeHtml(displayName);
+                if (subEl) subEl.innerText = "Connected via Spotify OAuth";
+                if (badgeEl) badgeEl.innerText = "Live";
+                if (navBtn && !safeStorage.get("username")) navBtn.innerText = "👤 " + displayName;
+              } catch (e) {}
+            } else if (xhr.status === 401) {
+              var subExpired = document.getElementById("user-account-subtitle");
+              var badgeExpired = document.getElementById("user-spotify-sync-badge");
+              if (subExpired) subExpired.innerText = "Spotify session expired • Tap Settings to reconnect";
+              if (badgeExpired) badgeExpired.innerText = "Local";
+            }
           }
         };
 
@@ -3612,6 +4091,8 @@
       }
 
       var lastPlayCommandTime = 0;
+      var hasConfirmedConnectDevice = false;
+
       function playTrack(track, index) {
         if (!track) return;
 
@@ -3629,15 +4110,14 @@
         updatePlayerUI();
 
         var token = safeStorage.get("access_token");
+        var shouldTryConnect = isRealUserSpotifyToken(token) &&
+          activeConnectTargetId !== "local_full" &&
+          (Boolean(spotifyWebPlayerDeviceId) || (Boolean(activeConnectTargetId) && activeConnectTargetId !== "phone") || hasConfirmedConnectDevice);
 
-        // 1. If genuine Spotify Connect target is selected, play full song via Spotify API
-        if (isRealUserSpotifyToken(token) && activeConnectTargetId !== "local_full") {
-          var targetId = activeConnectTargetId;
-          if (activeConnectTargetId === "phone") {
-            targetId = "phone";
-          } else if (!targetId) {
-            targetId = spotifyWebPlayerDeviceId || undefined;
-          }
+        // 1. Only route async through Spotify Connect if a real Spotify playback device is active;
+        // otherwise start HTML5 <audio> SYNCHRONOUSLY inside tap gesture so iOS 7.1.2 Safari never blocks audio!
+        if (shouldTryConnect) {
+          var targetId = activeConnectTargetId || spotifyWebPlayerDeviceId || undefined;
           var uri = track.uri || (track.id ? "spotify:track:" + track.id : "");
 
           var xhr = new XMLHttpRequest();
@@ -3646,7 +4126,6 @@
           xhr.timeout = 4000;
           xhr.onreadystatechange = function () {
             if (xhr.readyState === 4) {
-              // Cancel late async play responses if user paused or switched tracks in the meantime
               if (reqGen !== playbackGenerationId || !isPlaying) return;
               if (xhr.status >= 200 && xhr.status < 300) {
                 var res = {};
@@ -3680,7 +4159,7 @@
           }
         }
 
-        // 2. Direct full-length HTML5 audio playback
+        // 2. Direct synchronous full-length HTML5 audio playback (works reliably on iPhone 5 & static hosts)
         startNativePlayback(track, index, reqGen);
       }
 
@@ -3689,7 +4168,6 @@
         var nativeAudio = document.getElementById("native-audio-player");
         if (!nativeAudio) return;
 
-        // Ensure Spotify SDK & Web Audio aren't playing simultaneously in background
         if (spotifyWebPlayerInstance) {
           try { spotifyWebPlayerInstance.pause(); } catch (e) {}
         }
@@ -3822,7 +4300,11 @@
           isPlaying = true;
           lastPauseTimestamp = 0;
 
-          if (isRealUserSpotifyToken(token) && activeConnectTargetId !== "local_full") {
+          var shouldResumeConnect = isRealUserSpotifyToken(token) &&
+            activeConnectTargetId !== "local_full" &&
+            (Boolean(spotifyWebPlayerDeviceId) || (Boolean(activeConnectTargetId) && activeConnectTargetId !== "phone") || hasConfirmedConnectDevice);
+
+          if (shouldResumeConnect) {
             if (spotifyWebPlayerInstance) {
               try { spotifyWebPlayerInstance.resume(); } catch (err) {}
             }
@@ -3928,6 +4410,31 @@
 
         container.innerHTML = '<div style="padding: 10px; text-align: center; color: #8e8e93;"><div class="ios7-spinner" style="margin: 0 auto 6px;"></div>Scanning Spotify Connect devices...</div>';
 
+        function fetchDirectDevicesFallback() {
+          if (!isRealUserSpotifyToken(token)) {
+            renderDevicesList([]);
+            return;
+          }
+          var dXhr = new XMLHttpRequest();
+          dXhr.open("GET", "https://api.spotify.com/v1/me/player/devices", true);
+          dXhr.setRequestHeader("Authorization", "Bearer " + token);
+          dXhr.timeout = 4000;
+          dXhr.onreadystatechange = function () {
+            if (dXhr.readyState === 4) {
+              var devs = [];
+              if (dXhr.status === 200) {
+                try {
+                  var dJson = JSON.parse(dXhr.responseText || "{}");
+                  devs = dJson.devices || [];
+                } catch (e) {}
+              }
+              renderDevicesList(devs);
+            }
+          };
+          dXhr.onerror = function () { renderDevicesList([]); };
+          try { dXhr.send(); } catch (e) { renderDevicesList([]); }
+        }
+
         var xhr = new XMLHttpRequest();
         xhr.open("GET", getBackendBaseUrl() + "/api/spotify/devices?token=" + encodeURIComponent(token || ""), true);
         xhr.timeout = 4000;
@@ -3938,17 +4445,22 @@
               try {
                 var data = JSON.parse(xhr.responseText);
                 devices = data.devices || [];
+                renderDevicesList(devices);
+                return;
               } catch (e) {}
             }
-            renderDevicesList(devices);
+            fetchDirectDevicesFallback();
           }
         };
-        try { xhr.send(); } catch (e) { renderDevicesList([]); }
+        xhr.onerror = function () { fetchDirectDevicesFallback(); };
+        try { xhr.send(); } catch (e) { fetchDirectDevicesFallback(); }
       };
 
       function renderDevicesList(devices) {
         var container = document.getElementById("devices-list-container");
         if (!container) return;
+
+        hasConfirmedConnectDevice = Boolean(devices && devices.length > 0 && activeConnectTargetId !== "local_full" && activeConnectTargetId !== "phone");
 
         var html = '<div style="font-size: 11px; font-weight: 500; color: #8e8e93; text-transform: uppercase; margin-bottom: 6px;">Audio Output Devices</div>';
 
@@ -4014,6 +4526,12 @@
       window.selectDevice = function (deviceId, deviceName) {
         activeConnectTargetId = (deviceId === 'local_full' || deviceId === 'phone') ? deviceId : deviceId;
         activeConnectTargetName = deviceName;
+        hasConfirmedConnectDevice = Boolean(
+          deviceId &&
+          deviceId !== 'local_full' &&
+          deviceId !== 'phone' &&
+          (deviceId !== 'web_receiver' || spotifyWebPlayerDeviceId)
+        );
         updateConnectedDeviceBadge(deviceName);
 
         var token = safeStorage.get("access_token");
@@ -4266,6 +4784,103 @@
         var searchUrl = getBackendBaseUrl() + "/api/spotify/search?q=" + encodeURIComponent(query) +
           (isRealUserSpotifyToken(token) ? ("&token=" + encodeURIComponent(token)) : "");
 
+        function finishSearch(liveTracks, usedLive) {
+          if (searchGen !== activeSearchGeneration) return;
+          var localMatches = gatherLocalSearchMatches(query);
+          var combined = [];
+          var seen = {};
+          var all = (liveTracks || []).concat(localMatches);
+          for (var k = 0; k < all.length; k++) {
+            var tr = all[k];
+            var key = tr.id || (tr.title + "::" + tr.artist);
+            if (!seen[key]) {
+              seen[key] = true;
+              combined.push(tr);
+            }
+          }
+          renderSearchMatchesUI(query, combined, usedLive);
+        }
+
+        function searchDirectClientFallbacks() {
+          // 1. If user has real Spotify OAuth token, call Spotify Web API directly (works on GitHub Pages!)
+          if (isRealUserSpotifyToken(token)) {
+            var spXhr = new XMLHttpRequest();
+            spXhr.open("GET", "https://api.spotify.com/v1/search?q=" + encodeURIComponent(query) + "&type=track&limit=10", true);
+            spXhr.setRequestHeader("Authorization", "Bearer " + token);
+            spXhr.timeout = 5000;
+            spXhr.onreadystatechange = function () {
+              if (spXhr.readyState === 4) {
+                if (spXhr.status === 200) {
+                  try {
+                    var spData = JSON.parse(spXhr.responseText || "{}");
+                    var items = (spData.tracks && spData.tracks.items) || [];
+                    if (items.length > 0) {
+                      var mapped = [];
+                      for (var i = 0; i < items.length; i++) {
+                        var t = items[i];
+                        var art = (t.album && t.album.images && t.album.images[0]) ? t.album.images[0].url : LOCAL_COVERS.doom;
+                        var artistNames = (t.artists || []).map(function (a) { return a.name; }).join(", ") || "Artist";
+                        mapped.push({
+                          id: t.id,
+                          uri: t.uri || ("spotify:track:" + t.id),
+                          title: t.name,
+                          artist: artistNames,
+                          album: t.album ? t.album.name : "",
+                          duration: t.duration_ms ? Math.round(t.duration_ms / 1000) : 180,
+                          art: art,
+                          preview_url: localAudioUrls[i % localAudioUrls.length]
+                        });
+                      }
+                      finishSearch(mapped, true);
+                      return;
+                    }
+                  } catch (e) {}
+                }
+                searchItunesPublicFallback();
+              }
+            };
+            spXhr.onerror = function () { searchItunesPublicFallback(); };
+            spXhr.ontimeout = function () { searchItunesPublicFallback(); };
+            try { spXhr.send(); return; } catch (e) {}
+          }
+          searchItunesPublicFallback();
+        }
+
+        function searchItunesPublicFallback() {
+          var itXhr = new XMLHttpRequest();
+          itXhr.open("GET", "https://itunes.apple.com/search?term=" + encodeURIComponent(query) + "&entity=song&limit=15", true);
+          itXhr.timeout = 5000;
+          itXhr.onreadystatechange = function () {
+            if (itXhr.readyState === 4) {
+              var tracks = [];
+              if (itXhr.status === 200) {
+                try {
+                  var itData = JSON.parse(itXhr.responseText || "{}");
+                  var results = itData.results || [];
+                  for (var i = 0; i < results.length; i++) {
+                    var r = results[i];
+                    if (!r || !r.trackName) continue;
+                    var art = r.artworkUrl100 ? r.artworkUrl100.replace("100x100bb", "300x300bb") : LOCAL_COVERS.indie;
+                    tracks.push({
+                      id: "it_" + (r.trackId || i),
+                      title: r.trackName,
+                      artist: r.artistName || "Artist",
+                      album: r.collectionName || "",
+                      duration: r.trackTimeMillis ? Math.round(r.trackTimeMillis / 1000) : 180,
+                      art: art,
+                      preview_url: localAudioUrls[i % localAudioUrls.length]
+                    });
+                  }
+                } catch (e) {}
+              }
+              finishSearch(tracks, false);
+            }
+          };
+          itXhr.onerror = function () { finishSearch([], false); };
+          itXhr.ontimeout = function () { finishSearch([], false); };
+          try { itXhr.send(); } catch (e) { finishSearch([], false); }
+        }
+
         var xhr = new XMLHttpRequest();
         xhr.open("GET", searchUrl, true);
         xhr.timeout = 7000;
@@ -4282,40 +4897,31 @@
                 if (res && res.tracks && res.tracks.length > 0) {
                   liveTracks = res.tracks;
                   usedLive = res.source === "spotify_live";
+                  finishSearch(liveTracks, usedLive);
+                  return;
                 }
               } catch (e) {}
             }
 
-            var localMatches = gatherLocalSearchMatches(query);
-            var combined = [];
-            var seen = {};
-            var all = liveTracks.concat(localMatches);
-            for (var k = 0; k < all.length; k++) {
-              var tr = all[k];
-              var key = tr.id || (tr.title + "::" + tr.artist);
-              if (!seen[key]) {
-                seen[key] = true;
-                combined.push(tr);
-              }
-            }
-            renderSearchMatchesUI(query, combined, usedLive);
+            // If /api backend is absent (e.g. GitHub Pages 404) or returned empty, run direct client search
+            searchDirectClientFallbacks();
           }
         };
 
         xhr.ontimeout = function () {
           if (searchGen !== activeSearchGeneration) return;
-          renderSearchMatchesUI(query, gatherLocalSearchMatches(query), false);
+          searchDirectClientFallbacks();
         };
 
         xhr.onerror = function () {
           if (searchGen !== activeSearchGeneration) return;
-          renderSearchMatchesUI(query, gatherLocalSearchMatches(query), false);
+          searchDirectClientFallbacks();
         };
 
         try {
           xhr.send();
         } catch (e) {
-          renderSearchMatchesUI(query, gatherLocalSearchMatches(query), false);
+          searchDirectClientFallbacks();
         }
       }
 

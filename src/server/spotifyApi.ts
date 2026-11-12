@@ -69,8 +69,10 @@ export async function exchangeSpotifyAuthCode(params: {
   code: string;
   redirectUri: string;
   codeVerifier?: string;
+  clientId?: string;
 }): Promise<{ access_token?: string; refresh_token?: string; expires_in?: number; error?: string }> {
-  const { clientId, clientSecret } = getSpotifyCredentials();
+  const { clientId: envClientId, clientSecret } = getSpotifyCredentials();
+  const clientId = (params.clientId || '').trim() || envClientId;
   const headers: Record<string, string> = {
     'Content-Type': 'application/x-www-form-urlencoded'
   };
@@ -84,7 +86,7 @@ export async function exchangeSpotifyAuthCode(params: {
   if (params.codeVerifier) {
     bodyParams.set('code_verifier', params.codeVerifier);
     bodyParams.set('client_id', clientId);
-  } else if (clientSecret) {
+  } else if (clientSecret && clientId === envClientId) {
     const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
     headers.Authorization = `Basic ${basicAuth}`;
   } else {

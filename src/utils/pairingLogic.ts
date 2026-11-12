@@ -139,3 +139,36 @@ export function selectAudioSource(track: any, index: number): string {
 export function isSpotifyConnectActive(deviceId?: string | null): boolean {
   return typeof deviceId === 'string' && deviceId.trim().length > 0;
 }
+
+export function getAppBasePath(pathname: string): string {
+  var p = (pathname || '/').split('?')[0].split('#')[0];
+  p = p.replace(/\/(index\.html|pair|callback)\/?$/i, '');
+  if (!p || p === '/') return '/';
+  if (p.charAt(0) !== '/') p = '/' + p;
+  if (p.charAt(p.length - 1) !== '/') p += '/';
+  return p;
+}
+
+export function resolveAppAssetPath(origin: string, pathname: string, assetUrl: string): string {
+  if (!assetUrl) return '';
+  if (
+    assetUrl.indexOf('http://') === 0 ||
+    assetUrl.indexOf('https://') === 0 ||
+    assetUrl.indexOf('blob:') === 0 ||
+    assetUrl.indexOf('data:') === 0
+  ) {
+    return assetUrl;
+  }
+  var cleanOrigin = (origin || '').replace(/\/+$/, '');
+  var cleanAsset = assetUrl.replace(/^\/+/, '');
+  return cleanOrigin + getAppBasePath(pathname) + cleanAsset;
+}
+
+export function isSpotifyOAuthCode(code: string, pathname?: string): boolean {
+  if (!code || typeof code !== 'string') return false;
+  var trimmed = code.trim();
+  if (trimmed.length <= 20) return false;
+  var cleanPath = (pathname || '/').split('?')[0].toLowerCase();
+  if (/\/pair\/?$/.test(cleanPath)) return false;
+  return true;
+}

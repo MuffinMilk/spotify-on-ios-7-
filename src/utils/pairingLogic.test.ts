@@ -11,7 +11,10 @@ import {
   formatSpotifyTrackUri,
   isPreviewSnippet,
   selectAudioSource,
-  isSpotifyConnectActive
+  isSpotifyConnectActive,
+  getAppBasePath,
+  resolveAppAssetPath,
+  isSpotifyOAuthCode
 } from './pairingLogic';
 
 test('generatePairingCode generates 6 uppercase characters without ambiguous characters', () => {
@@ -93,4 +96,33 @@ test('isSpotifyConnectActive checks device ID validity', () => {
   assert.equal(isSpotifyConnectActive('dev_12345'), true);
   assert.equal(isSpotifyConnectActive(''), false);
   assert.equal(isSpotifyConnectActive(null), false);
+});
+
+test('getAppBasePath and resolveAppAssetPath handle root and GitHub Pages subpaths', () => {
+  assert.equal(getAppBasePath('/'), '/');
+  assert.equal(getAppBasePath('/callback'), '/');
+  assert.equal(getAppBasePath('/pair'), '/');
+  assert.equal(getAppBasePath('/spotify-on-ios-7-/'), '/spotify-on-ios-7-/');
+  assert.equal(getAppBasePath('/spotify-on-ios-7-/index.html'), '/spotify-on-ios-7-/');
+  assert.equal(getAppBasePath('/spotify-on-ios-7-/callback'), '/spotify-on-ios-7-/');
+
+  assert.equal(
+    resolveAppAssetPath('https://muffinmilk.github.io', '/spotify-on-ios-7-/', '/assets/covers/cover_doom_vinyl.jpg'),
+    'https://muffinmilk.github.io/spotify-on-ios-7-/assets/covers/cover_doom_vinyl.jpg'
+  );
+  assert.equal(
+    resolveAppAssetPath('https://spotify-on-ios-7.vercel.app', '/callback', '/audio/track1.mp3'),
+    'https://spotify-on-ios-7.vercel.app/audio/track1.mp3'
+  );
+  assert.equal(
+    resolveAppAssetPath('https://spotify-on-ios-7.vercel.app', '/', 'https://i.scdn.co/image/abc'),
+    'https://i.scdn.co/image/abc'
+  );
+});
+
+test('isSpotifyOAuthCode distinguishes long OAuth codes from 6-char pairing codes', () => {
+  assert.equal(isSpotifyOAuthCode('AQBKPdClw-wbWU51unzTzy2c2i0UmNJMZ', '/spotify-on-ios-7-/'), true);
+  assert.equal(isSpotifyOAuthCode('AQBKPdClw-wbWU51unzTzy2c2i0UmNJMZ', '/'), true);
+  assert.equal(isSpotifyOAuthCode('QP2VUT', '/pair'), false);
+  assert.equal(isSpotifyOAuthCode('AQBKPdClw-wbWU51unzTzy2c2i0UmNJMZ', '/pair'), false);
 });

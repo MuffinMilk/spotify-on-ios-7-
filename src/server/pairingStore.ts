@@ -242,7 +242,26 @@ export async function approvePairingRecord(
   };
 
   memoryPairings.set(code, updated);
-  await firestoreUpsertPairing(updated, false);
+  let persisted = await firestoreUpsertPairing(updated, false);
+  if (!persisted) {
+    // Re-check remote document state (may have been concurrently created/paired or missing)
+    const remoteCheck = await firestoreGetPairing(code);
+    if (remoteCheck && remoteCheck.status === 'paired' && remoteCheck.accessToken) {
+      memoryPairings.set(code, remoteCheck);
+      return { success: true, record: remoteCheck };
+    }
+    if (!remoteCheck) {
+      const pendingDoc: PairingRecord = {
+        code,
+        status: 'pending',
+        expiresAt: Date.now() + 30 * 60 * 1000,
+        createdAt: updated.createdAt,
+        updatedAt: nowIso
+      };
+      await firestoreUpsertPairing(pendingDoc, true);
+      persisted = await firestoreUpsertPairing(updated, false);
+    }
+  }
 
   return { success: true, record: updated };
 }
