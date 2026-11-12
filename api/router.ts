@@ -127,6 +127,16 @@ export default async function handler(req: any, res: any) {
       });
     }
 
+    if (route === 'spotify/config') {
+      const clientId = (process.env.SPOTIFY_CLIENT_ID || '74009b25ca824b099fb2415105fb9ca6').trim();
+      const redirectUri = (process.env.SPOTIFY_REDIRECT_URI || '').trim();
+      return sendJson(res, 200, {
+        client_id: clientId,
+        redirect_uri: redirectUri,
+        has_secret: Boolean((process.env.SPOTIFY_CLIENT_SECRET || '').trim())
+      });
+    }
+
     if (route === 'spotify/app-token') {
       const token = await getSpotifyAppToken();
       return sendJson(res, 200, {

@@ -148,6 +148,16 @@ app.post('/api/account/link-spotify', (req: Request, res: Response) => {
 // -------------------------------------------------------------
 // Spotify Web API Token & Proxy
 // -------------------------------------------------------------
+app.get('/api/spotify/config', (_req: Request, res: Response) => {
+  const { clientId, clientSecret } = getSpotifyCredentials();
+  const redirectUri = (process.env.SPOTIFY_REDIRECT_URI || '').trim();
+  return res.json({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    has_secret: Boolean(clientSecret)
+  });
+});
+
 app.get('/api/spotify/token', (_req: Request, res: Response) => {
   const { clientId, clientSecret } = getSpotifyCredentials();
   return res.json({ clientId, hasSecret: Boolean(clientSecret) });

@@ -1446,8 +1446,11 @@
       <button type="button" class="ios7-button secondary" id="btn-portal-instant" onclick="portalApproveInstant()" style="height: 44px; font-size: 14px; margin-bottom: 10px;">
         Pair Device Instantly
       </button>
-      <button type="button" class="ios7-button ghost" onclick="exitPairPortalToApp()" style="height: 42px; font-size: 13px;">
+      <button type="button" class="ios7-button ghost" onclick="exitPairPortalToApp()" style="height: 42px; font-size: 13px; margin-bottom: 10px;">
         Open Xpotify Web Player
+      </button>
+      <button type="button" onclick="openSpotifyClientIdModal()" style="background:none; border:none; color:#8e8e93; font-size:11px; text-decoration:underline; cursor:pointer;">
+        Configure Spotify Client ID / Redirect URI
       </button>
     </div>
   </main>
@@ -1933,20 +1936,25 @@
       <!-- MODAL: SPOTIFY CLIENT ID DIRECT LOGIN          -->
       <!-- ============================================== -->
       <div class="ios7-alert-backdrop" id="modal-client-id">
-        <div class="ios7-alert-box" style="width: 300px; max-height: 90vh; overflow-y: auto;">
+        <div class="ios7-alert-box" style="width: 304px; max-height: 92vh; overflow-y: auto;">
           <div class="alert-header">
             <div class="alert-title">Spotify Account Login</div>
-            <div class="alert-message">
-              To fix <em>"redirect_uri: Not matching configuration"</em>, add this exact URI in your Spotify App settings:
+            <div class="alert-message" style="font-size:11px; line-height:1.35;">
+              Spotify requires an <strong>exact match</strong> for both Client ID and Redirect URI in your Spotify Dashboard.
             </div>
-            <div style="background:#141416; border:1px solid #333; border-radius:6px; padding:6px 8px; margin:8px 0; text-align:left;">
-              <div style="font-size:10px; color:#8e8e93; margin-bottom:2px;">Redirect URI:</div>
-              <code id="redirect-uri-preview" style="color:#1db954; font-size:11px; word-break:break-all; user-select:all;"></code>
+            <div style="background:#141416; border:1px solid #333; border-radius:6px; padding:7px 8px; margin:7px 0; text-align:left;">
+              <div style="font-size:10px; color:#8e8e93; margin-bottom:3px;">Redirect URI sent to Spotify:</div>
+              <input type="text" id="spotify-redirect-uri-input" class="config-input" value="" onchange="onRedirectUriInputChange()" style="margin-top:0; margin-bottom:6px; color:#1db954; font-size:10.5px; height:28px;" />
+              <div style="display:-webkit-box; display:-webkit-flex; display:flex; -webkit-box-pack:justify; -webkit-justify-content:space-between; justify-content:space-between;">
+                <button type="button" onclick="applyRedirectUriPreset('/callback')" style="background:#1c1c1e; color:#1db954; border:1px solid #333; border-radius:4px; padding:3px 6px; font-size:9.5px; cursor:pointer;">/callback</button>
+                <button type="button" onclick="applyRedirectUriPreset('/')" style="background:#1c1c1e; color:#e5e5ea; border:1px solid #333; border-radius:4px; padding:3px 6px; font-size:9.5px; cursor:pointer;">Root (/)</button>
+                <button type="button" onclick="applyRedirectUriPreset('')" style="background:#1c1c1e; color:#e5e5ea; border:1px solid #333; border-radius:4px; padding:3px 6px; font-size:9.5px; cursor:pointer;">Bare Origin</button>
+              </div>
             </div>
-            <div style="text-align:left; font-size:10px; color:#8e8e93; margin-bottom:8px; line-height:1.4;">
-              1. Go to <a href="https://developer.spotify.com/dashboard" target="_blank" style="color:#1db954;">developer.spotify.com/dashboard</a>.<br>
-              2. Open your App &rarr; <strong>Settings</strong>.<br>
-              3. Under <strong>Redirect URIs</strong>, paste the link above and click <strong>Save</strong>.
+            <div style="text-align:left; font-size:10px; color:#8e8e93; margin-bottom:7px; line-height:1.35;">
+              1. Open <a href="https://developer.spotify.com/dashboard" target="_blank" style="color:#1db954;">developer.spotify.com/dashboard</a> &rarr; App <strong>Settings</strong>.<br>
+              2. If using Vercel, make sure you are on your main domain (not a random preview deployment URL) and match the exact URI above.<br>
+              3. Verify your Spotify App <strong>Client ID</strong> below matches your Dashboard &amp; Vercel env var:
             </div>
             <div style="font-size:11px; color:#8e8e93; text-align:left;">Client ID:</div>
             <input type="text" id="spotify-client-id-input" class="config-input" value="74009b25ca824b099fb2415105fb9ca6" style="margin-top:2px;" />
@@ -2397,7 +2405,7 @@
           var authCode = parseQueryParam(search, "code");
           var stateVal = parseQueryParam(search, "state");
           var codeVerifier = safeStorage.get("spotify_code_verifier") || "";
-          var redirectUri = getCleanRedirectUri();
+          var redirectUri = safeStorage.get("spotify_last_redirect_uri") || getCleanRedirectUri();
 
           var xhr = new XMLHttpRequest();
           xhr.open("POST", getBackendBaseUrl() + "/api/spotify/token", true);
@@ -2455,9 +2463,71 @@
         callback({});
       }
 
+      var serverSpotifyClientId = "";
+      var serverSpotifyRedirectUri = "";
+
+      function getCleanOrigin() {
+        return window.location.origin || (window.location.protocol + "//" + window.location.host);
+      }
+
       function getCleanRedirectUri() {
-        var origin = window.location.origin || (window.location.protocol + "//" + window.location.host);
-        return origin + "/callback";
+        var inputEl = document.getElementById("spotify-redirect-uri-input");
+        if (inputEl && inputEl.value && inputEl.value.trim()) {
+          return inputEl.value.trim();
+        }
+        var saved = safeStorage.get("spotify_redirect_uri");
+        if (saved && saved.trim()) {
+          return saved.trim();
+        }
+        if (serverSpotifyRedirectUri) {
+          return serverSpotifyRedirectUri;
+        }
+        return getCleanOrigin() + "/callback";
+      }
+
+      window.applyRedirectUriPreset = function (suffix) {
+        var uri = getCleanOrigin() + suffix;
+        var inputEl = document.getElementById("spotify-redirect-uri-input");
+        if (inputEl) inputEl.value = uri;
+        safeStorage.set("spotify_redirect_uri", uri);
+      };
+
+      window.onRedirectUriInputChange = function () {
+        var inputEl = document.getElementById("spotify-redirect-uri-input");
+        if (inputEl && inputEl.value && inputEl.value.trim()) {
+          safeStorage.set("spotify_redirect_uri", inputEl.value.trim());
+        } else {
+          safeStorage.remove("spotify_redirect_uri");
+        }
+      };
+
+      function fetchServerSpotifyConfig() {
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", getBackendBaseUrl() + "/api/spotify/config", true);
+        xhr.timeout = 4000;
+        xhr.onreadystatechange = function () {
+          if (xhr.readyState === 4 && xhr.status === 200) {
+            try {
+              var cfg = JSON.parse(xhr.responseText || "{}");
+              if (cfg.client_id) {
+                serverSpotifyClientId = cfg.client_id;
+                var clientInput = document.getElementById("spotify-client-id-input");
+                var savedClientId = safeStorage.get("spotify_client_id");
+                if (clientInput && (!savedClientId || savedClientId === "74009b25ca824b099fb2415105fb9ca6")) {
+                  clientInput.value = cfg.client_id;
+                }
+              }
+              if (cfg.redirect_uri) {
+                serverSpotifyRedirectUri = cfg.redirect_uri;
+                var redirInput = document.getElementById("spotify-redirect-uri-input");
+                if (redirInput && !safeStorage.get("spotify_redirect_uri")) {
+                  redirInput.value = cfg.redirect_uri;
+                }
+              }
+            } catch (e) {}
+          }
+        };
+        try { xhr.send(); } catch (e) {}
       }
 
       // -----------------------------------------------------------------
@@ -2467,12 +2537,6 @@
         updateClock();
         setInterval(updateClock, 30000);
 
-        // Populate redirect URI preview for Spotify Developer App setup
-        var redirEl = document.getElementById("redirect-uri-preview");
-        if (redirEl) {
-          redirEl.innerHTML = getCleanRedirectUri();
-        }
-
         // Restore custom backend URL if previously saved
         var savedBackend = safeStorage.get("backend_url");
         if (savedBackend) {
@@ -2480,15 +2544,23 @@
           if (input) input.value = savedBackend;
         }
 
-        // Restore saved Client ID
+        // Restore saved Client ID and Redirect URI
         var savedClientId = safeStorage.get("spotify_client_id");
         if (savedClientId) {
           var clientInput = document.getElementById("spotify-client-id-input");
           if (clientInput) clientInput.value = savedClientId;
         }
 
+        var redirInput = document.getElementById("spotify-redirect-uri-input");
+        if (redirInput) {
+          redirInput.value = getCleanRedirectUri();
+        }
+
+        fetchServerSpotifyConfig();
+
         var path = window.location.pathname || "/";
-        if (path.indexOf("/callback") === 0 && window.location.search.indexOf("code=") !== -1) {
+        var rawSearch = window.location.search || "";
+        if (rawSearch.indexOf("code=") !== -1 && (path.indexOf("/callback") === 0 || rawSearch.indexOf("state=PAIR") !== -1)) {
           openWebPairPortal("", "Completing Spotify Authorization...", "info", "Exchanging authorization with Spotify...");
         }
 
@@ -2748,17 +2820,37 @@
       // -----------------------------------------------------------------
       // Direct Spotify Client ID OAuth Authentication
       // -----------------------------------------------------------------
+      var wasPortalOpenBeforeOAuthModal = false;
+
       window.openSpotifyClientIdModal = function () {
+        var portal = document.getElementById("web-pair-portal");
+        wasPortalOpenBeforeOAuthModal = Boolean(portal && portal.className.indexOf("show") !== -1);
+        if (wasPortalOpenBeforeOAuthModal && portal) {
+          portal.className = "";
+        }
+        var redirInput = document.getElementById("spotify-redirect-uri-input");
+        if (redirInput && !redirInput.value) {
+          redirInput.value = getCleanRedirectUri();
+        }
+        var clientInput = document.getElementById("spotify-client-id-input");
+        if (clientInput && serverSpotifyClientId && (!clientInput.value || clientInput.value === "74009b25ca824b099fb2415105fb9ca6")) {
+          clientInput.value = serverSpotifyClientId;
+        }
         document.getElementById("modal-client-id").className = "ios7-alert-backdrop show";
       };
 
       window.closeSpotifyClientIdModal = function () {
         document.getElementById("modal-client-id").className = "ios7-alert-backdrop";
+        if (wasPortalOpenBeforeOAuthModal) {
+          var portal = document.getElementById("web-pair-portal");
+          if (portal) portal.className = "show";
+          wasPortalOpenBeforeOAuthModal = false;
+        }
       };
 
       function startSpotifyOAuthWithState(stateStr) {
         var input = document.getElementById("spotify-client-id-input");
-        var clientId = (input ? input.value.trim() : "") || safeStorage.get("spotify_client_id") || "74009b25ca824b099fb2415105fb9ca6";
+        var clientId = (input ? input.value.trim() : "") || safeStorage.get("spotify_client_id") || serverSpotifyClientId || "74009b25ca824b099fb2415105fb9ca6";
 
         safeStorage.set("spotify_client_id", clientId);
         var codeVerifier = generateRandomString(64);
@@ -2766,6 +2858,8 @@
 
         function triggerRedirect(challenge) {
           var redirectUri = getCleanRedirectUri();
+          safeStorage.set("spotify_redirect_uri", redirectUri);
+          safeStorage.set("spotify_last_redirect_uri", redirectUri);
           var scopes = 'user-read-private playlist-read-private user-library-read user-read-email user-modify-playback-state user-read-playback-state streaming app-remote-control';
 
           var authUrl = 'https://accounts.spotify.com/authorize?' +
@@ -2792,6 +2886,14 @@
       }
 
       window.startSpotifyOAuth = function () {
+        if (wasPortalOpenBeforeOAuthModal) {
+          var portalInput = document.getElementById("portal-pair-code-input");
+          var pCode = portalInput ? portalInput.value.trim().toUpperCase() : "";
+          if (pCode && pCode.length === 6) {
+            startSpotifyOAuthWithState("PAIR:" + pCode);
+            return;
+          }
+        }
         startSpotifyOAuthWithState("DIRECT");
       };
 
