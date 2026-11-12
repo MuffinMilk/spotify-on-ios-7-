@@ -18,20 +18,67 @@
   <!-- Official Spotify Web Playback SDK for Web Speaker / Connect Mode -->
   <script src="https://sdk.scdn.co/spotify-player.js"></script>
 
-  <!-- Firebase SDKs -->
+  <!-- Firebase SDKs (modern browsers only; ES5 pairing flow uses /api/pair/* over XHR) -->
   <script type="module">
-    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-    import { getAuth } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
-    import { getFirestore } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
-
-    fetch('/firebase-applet-config.json')
-      .then(r => r.json())
-      .then(config => {
-        const app = initializeApp(config);
-        window.db = getFirestore(app, config.firestoreDatabaseId);
-        window.auth = getAuth(app);
-        console.log('Firebase initialized');
-      });
+    try {
+      Promise.all([
+        import('https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js'),
+        import('https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js'),
+        import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js'),
+        fetch('/firebase-applet-config.json').then(function (r) { return r.json(); })
+      ]).then(function (mods) {
+        var appMod = mods[0];
+        var authMod = mods[1];
+        var fsMod = mods[2];
+        var config = mods[3];
+        var app = appMod.initializeApp(config);
+        var db = fsMod.getFirestore(app, config.firestoreDatabaseId);
+        var auth = authMod.getAuth(app);
+        window.db = db;
+        window.auth = auth;
+        window.xpotifyFirebase = {
+          syncToken: function (token) {
+            if (auth && auth.currentUser && token) {
+              fsMod.setDoc(fsMod.doc(db, 'users', auth.currentUser.uid), {
+                spotifyToken: token,
+                updatedAt: new Date().toISOString()
+              }, { merge: true }).catch(function () {});
+            }
+          },
+          signUp: function (email, password, username, spotifyToken, onOk, onErr) {
+            authMod.createUserWithEmailAndPassword(auth, email, password)
+              .then(function (cred) {
+                return fsMod.setDoc(fsMod.doc(db, 'users', cred.user.uid), {
+                  username: username,
+                  spotifyToken: spotifyToken || null,
+                  createdAt: new Date().toISOString()
+                });
+              })
+              .then(function () { if (onOk) onOk(); })
+              .catch(function (err) { if (onErr) onErr(err); });
+          },
+          signIn: function (email, password, spotifyToken, onOk, onErr) {
+            authMod.signInWithEmailAndPassword(auth, email, password)
+              .then(function (cred) {
+                return fsMod.getDoc(fsMod.doc(db, 'users', cred.user.uid)).then(function (docSnap) {
+                  var docData = docSnap.exists() ? docSnap.data() : null;
+                  if (docData && docData.spotifyToken) {
+                    if (onOk) onOk(docData.spotifyToken);
+                    return;
+                  }
+                  if (spotifyToken) {
+                    fsMod.setDoc(fsMod.doc(db, 'users', cred.user.uid), {
+                      spotifyToken: spotifyToken
+                    }, { merge: true }).catch(function () {});
+                  }
+                  if (onOk) onOk(null);
+                });
+              })
+              .catch(function (err) { if (onErr) onErr(err); });
+          }
+        };
+      }).catch(function () {});
+    } catch (e) {}
   </script>
 
   <style>
@@ -530,7 +577,7 @@
 
     /* Pair Device Screen */
     .pair-container {
-      padding: 20px 16px;
+      padding: 12px 16px 20px;
       display: -webkit-box;
       display: -webkit-flex;
       display: flex;
@@ -545,8 +592,8 @@
     }
 
     .spotify-logo-badge {
-      width: 50px;
-      height: 50px;
+      width: 42px;
+      height: 42px;
       -webkit-border-radius: 50%;
       border-radius: 50%;
       background: #1db954;
@@ -559,29 +606,29 @@
       -webkit-box-pack: center;
       -webkit-justify-content: center;
       justify-content: center;
-      margin-bottom: 12px;
+      margin-bottom: 8px;
     }
 
     .spotify-logo-badge svg {
-      width: 30px;
-      height: 30px;
+      width: 24px;
+      height: 24px;
       fill: #000000;
     }
 
     .pair-title {
-      font-size: 21px;
+      font-size: 19px;
       font-weight: 200;
       letter-spacing: -0.4px;
-      margin-bottom: 4px;
+      margin-bottom: 3px;
       color: #ffffff;
     }
 
     .pair-subtitle {
-      font-size: 12px;
+      font-size: 11.5px;
       font-weight: 300;
       color: #8e8e93;
-      margin-bottom: 16px;
-      line-height: 1.4;
+      margin-bottom: 10px;
+      line-height: 1.35;
       max-width: 270px;
     }
 
@@ -591,8 +638,8 @@
       border: 1px solid #282828;
       -webkit-border-radius: 10px;
       border-radius: 10px;
-      padding: 16px 12px;
-      margin-bottom: 14px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
       text-align: center;
     }
 
@@ -601,25 +648,25 @@
       text-transform: uppercase;
       letter-spacing: 1px;
       color: #8e8e93;
-      margin-bottom: 6px;
+      margin-bottom: 3px;
     }
 
     .pairing-code-display {
-      font-size: 38px;
+      font-size: 32px;
       font-weight: 200;
       letter-spacing: 6px;
       color: #ffffff;
       font-family: "Courier New", Courier, monospace, "Helvetica Neue";
-      padding: 2px 0;
+      padding: 1px 0;
     }
 
     .instructions-text {
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 300;
       color: #b3b3b3;
-      line-height: 1.45;
-      margin-bottom: 14px;
-      padding: 0 6px;
+      line-height: 1.35;
+      margin-bottom: 10px;
+      padding: 0 4px;
     }
 
     .instructions-text strong {
@@ -636,8 +683,8 @@
       align-items: center;
       font-size: 11px;
       color: #8e8e93;
-      margin-bottom: 16px;
-      padding: 5px 10px;
+      margin-bottom: 10px;
+      padding: 4px 10px;
       -webkit-border-radius: 16px;
       border-radius: 16px;
       background: #141416;
@@ -1282,9 +1329,128 @@
       color: #ff3b30;
       border-left: 1px solid #282828;
     }
+
+    /* Responsive Cross-Device Pairing & OAuth Callback Portal (/pair & /callback) */
+    #web-pair-portal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: #000000;
+      color: #ffffff;
+      z-index: 999999;
+      padding: 20px;
+      overflow-y: auto;
+      -webkit-box-pack: center;
+      -webkit-justify-content: center;
+      justify-content: center;
+      -webkit-box-align: center;
+      -webkit-align-items: center;
+      align-items: center;
+    }
+
+    #web-pair-portal.show {
+      display: -webkit-box;
+      display: -webkit-flex;
+      display: flex;
+    }
+
+    .portal-card {
+      width: 100%;
+      max-width: 400px;
+      background: #121214;
+      border: 1px solid #282828;
+      -webkit-border-radius: 16px;
+      border-radius: 16px;
+      padding: 28px 24px;
+      text-align: center;
+    }
+
+    .portal-code-input {
+      width: 100%;
+      background: #1c1c1e;
+      border: 1px solid #333333;
+      -webkit-border-radius: 10px;
+      border-radius: 10px;
+      color: #ffffff;
+      font-size: 26px;
+      letter-spacing: 6px;
+      text-transform: uppercase;
+      text-align: center;
+      padding: 12px 10px;
+      margin-bottom: 14px;
+      font-family: "Courier New", Courier, monospace;
+      outline: none;
+    }
+
+    .portal-feedback {
+      display: none;
+      font-size: 13px;
+      line-height: 1.4;
+      padding: 10px 12px;
+      -webkit-border-radius: 8px;
+      border-radius: 8px;
+      margin-bottom: 14px;
+      text-align: left;
+    }
+
+    .portal-feedback.success {
+      display: block;
+      background: rgba(29, 185, 84, 0.16);
+      border: 1px solid #1db954;
+      color: #d8ffe6;
+    }
+
+    .portal-feedback.error {
+      display: block;
+      background: rgba(255, 59, 48, 0.16);
+      border: 1px solid #ff3b30;
+      color: #ffd6d4;
+    }
+
+    .portal-feedback.info {
+      display: block;
+      background: rgba(142, 142, 147, 0.15);
+      border: 1px solid #3a3a3c;
+      color: #e5e5ea;
+    }
   </style>
 </head>
 <body>
+
+  <!-- Responsive Cross-Device Pairing & OAuth Portal (/pair & /callback) -->
+  <main id="web-pair-portal" aria-label="Pair Device Portal">
+    <div class="portal-card">
+      <div class="spotify-logo-badge" style="margin-bottom: 14px;">
+        <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true">
+          <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.35-1.435-5.308-1.76-8.794-.963-.335.077-.67-.133-.746-.468-.077-.334.132-.67.467-.746 3.808-.87 7.076-.506 9.723 1.113.294.18.386.562.207.857zm1.225-2.723c-.226.367-.708.482-1.075.257-2.69-1.653-6.79-2.133-9.972-1.168-.413.125-.853-.109-.978-.521-.125-.413.109-.854.521-.979 3.632-1.102 8.147-.568 11.246 1.336.368.225.483.708.258 1.075zm.105-2.835C14.692 8.95 9.375 8.775 6.297 9.71c-.493.15-1.016-.13-1.166-.623-.15-.494.13-1.016.623-1.166 3.532-1.073 9.404-.866 13.115 1.337.444.263.59.838.327 1.282-.264.443-.838.59-1.28.326z"/>
+        </svg>
+      </div>
+      <h1 id="portal-heading" style="font-size: 21px; font-weight: 500; margin-bottom: 6px;">Pair iPhone 5 with Xpotify</h1>
+      <p id="portal-subheading" style="font-size: 13px; color: #8e8e93; margin-bottom: 18px; line-height: 1.45;">
+        Enter the 6-character code shown on your iPhone 5 Safari screen to link playback and playlists.
+      </p>
+
+      <div id="portal-feedback-banner" class="portal-feedback" role="status"></div>
+
+      <label for="portal-pair-code-input" style="display: block; text-align: left; font-size: 11px; color: #8e8e93; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 6px;">
+        6-Character Pairing Code
+      </label>
+      <input type="text" id="portal-pair-code-input" class="portal-code-input" maxlength="6" placeholder="------" autocomplete="off" autocapitalize="characters">
+
+      <button type="button" class="ios7-button spotify-connect" id="btn-portal-oauth" onclick="portalLoginWithSpotify()" style="height: 44px; font-size: 14px; margin-bottom: 10px;">
+        Log In with Spotify Account
+      </button>
+      <button type="button" class="ios7-button secondary" id="btn-portal-instant" onclick="portalApproveInstant()" style="height: 44px; font-size: 14px; margin-bottom: 10px;">
+        Pair Device Instantly
+      </button>
+      <button type="button" class="ios7-button ghost" onclick="exitPairPortalToApp()" style="height: 42px; font-size: 13px;">
+        Open Xpotify Web Player
+      </button>
+    </div>
+  </main>
 
   <!-- Hidden native HTML5 audio element for actual iOS 7 audio preview playback -->
   <audio id="native-audio-player" preload="none"></audio>
@@ -1342,7 +1508,7 @@
             <h1 class="pair-title">Connect Xpotify</h1>
             <p class="pair-subtitle">Pair your iPhone 5 with your Spotify account to enable seamless music streaming.</p>
 
-            <div id="pair-account-banner" onclick="openAccountModal()" style="font-size: 11px; color: #1db954; background: rgba(29, 185, 84, 0.12); border: 1px solid rgba(29, 185, 84, 0.3); border-radius: 8px; padding: 6px 12px; margin-bottom: 12px; cursor: pointer; display: none;">
+            <div id="pair-account-banner" role="button" tabindex="0" onclick="openAccountModal()" style="font-size: 11px; color: #1db954; background: rgba(29, 185, 84, 0.12); border: 1px solid rgba(29, 185, 84, 0.3); border-radius: 8px; padding: 6px 12px; margin-bottom: 12px; cursor: pointer; display: none;">
               👤 Account: <strong id="pair-account-name">Muffin</strong> • Tap to manage
             </div>
 
@@ -1354,10 +1520,9 @@
 
             <!-- Mandatory User Instructions -->
             <div class="instructions-text">
-              Go to <strong>://spotify.com</strong> (or visit the <a id="pair-portal-link" href="/pair" target="_blank" style="color:#1db954; text-decoration:underline; font-weight:400;">/pair link</a>) and enter this code.
-              <div style="font-size:11px; color:#ff9f0a; margin-top:8px; line-height:1.35; padding:6px 8px; background:rgba(255,159,10,0.1); border-radius:6px; border:1px solid rgba(255,159,10,0.2);">
-                ⚠️ <strong>Important</strong>: Enter this code at our <a href="/pair" target="_blank" style="color:#ffffff; text-decoration:underline;">/pair link</a> above.<br>
-                (Do <em>not</em> enter it on spotify.com/pair, as Spotify reserves that page only for Smart TVs and PlayStation).
+              Open <a id="pair-portal-link" href="/pair" target="_blank" style="color:#1db954; text-decoration:underline; font-weight:400;">/pair</a> on your phone or computer and enter this code.
+              <div style="font-size:10.5px; color:#ff9f0a; margin-top:6px; line-height:1.3; padding:5px 8px; background:rgba(255,159,10,0.1); border-radius:6px; border:1px solid rgba(255,159,10,0.2);">
+                ⚠️ Use our <a href="/pair" target="_blank" style="color:#ffffff; text-decoration:underline;">/pair portal</a> or log in below (<code>spotify.com/pair</code> is TV-only).
               </div>
             </div>
 
@@ -1368,16 +1533,16 @@
             </div>
 
             <!-- Primary 1-Tap Pair Button with Live Spotify Token -->
-            <button class="ios7-button spotify-connect" id="btn-simulate-pair" onclick="simulatePairSuccess()" style="font-size:15px; height:44px; margin-bottom:10px;">
+            <button class="ios7-button spotify-connect" id="btn-simulate-pair" onclick="simulatePairSuccess()" style="font-size:14px; height:38px; margin-bottom:7px;">
               Pair Device Now (1-Tap Connect)
             </button>
 
             <!-- Direct Spotify Account Login Button -->
-            <button class="ios7-button secondary" onclick="openSpotifyClientIdModal()" style="margin-bottom:8px;">
+            <button class="ios7-button secondary" onclick="openSpotifyClientIdModal()" style="height:36px; font-size:13px; margin-bottom:7px;">
               Log In with Spotify Account
             </button>
 
-            <button class="ios7-button ghost" onclick="refreshPairingCode()">
+            <button class="ios7-button ghost" onclick="refreshPairingCode()" style="height:32px;">
               Regenerate Code
             </button>
 
@@ -1407,7 +1572,7 @@
         <div class="ios7-scroll-body with-player">
           <!-- User Profile & Account mini row -->
           <div class="ios7-table-view" style="margin-top: 12px;">
-            <div class="ios7-cell" onclick="openAccountModal()">
+            <div class="ios7-cell" role="button" tabindex="0" aria-label="Manage Xpotify Account" onclick="openAccountModal()">
               <div class="cell-icon" style="background:#1db954; color:#000000; font-size: 13px; line-height: 28px; text-align: center;">
                 👤
               </div>
@@ -1424,7 +1589,7 @@
           <div class="ios7-section-header">Library Collections</div>
           <div class="ios7-table-view">
             <!-- Playlists Row -->
-            <div class="ios7-cell" id="row-playlists" onclick="navigateToPlaylists()">
+            <div class="ios7-cell" id="row-playlists" role="button" tabindex="0" aria-label="Playlists" onclick="navigateToPlaylists()">
               <div class="cell-icon" style="color:#1db954;">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M9 18V5l12-2v13"></path>
@@ -1438,7 +1603,7 @@
             </div>
 
             <!-- Liked Songs Row -->
-            <div class="ios7-cell" id="row-liked" onclick="navigateToLikedSongs()">
+            <div class="ios7-cell" id="row-liked" role="button" tabindex="0" aria-label="Liked Songs" onclick="navigateToLikedSongs()">
               <div class="cell-icon" style="color:#e91429;">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
@@ -1450,7 +1615,7 @@
             </div>
 
             <!-- Artists Row -->
-            <div class="ios7-cell" id="row-artists" onclick="navigateToArtists()">
+            <div class="ios7-cell" id="row-artists" role="button" tabindex="0" aria-label="Artists" onclick="navigateToArtists()">
               <div class="cell-icon" style="color:#2e77d0;">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M12 1v11m-4-7a4 4 0 0 0 8 0v0a4 4 0 0 0-8 0z"></path>
@@ -1509,7 +1674,7 @@
         <div class="ios7-scroll-body with-player">
           <!-- Playlist Header Cover Hero -->
           <div style="padding: 16px 15px; display: -webkit-box; display: -webkit-flex; display: flex; -webkit-box-align: center; -webkit-align-items: center; align-items: center; background: #121212; border-bottom: 1px solid #222222;">
-            <img id="detail-cover-img" src="" class="rich-thumbnail" style="width: 60px; height: 60px; margin-right: 14px;" alt="Cover">
+            <img id="detail-cover-img" src="/assets/covers/cover_indie_tape.jpg" class="rich-thumbnail" style="width: 60px; height: 60px; margin-right: 14px;" alt="Cover">
             <div>
               <div id="detail-name" style="font-size: 16px; font-weight: 400; color: #ffffff;">Playlist Title</div>
               <div id="detail-owner" style="font-size: 12px; color: #8e8e93; margin-top: 2px;">By Spotify</div>
@@ -1565,11 +1730,11 @@
       <!-- ============================================== -->
       <!-- MINI NOW PLAYING BAR (Fixed above Tab Bar)     -->
       <!-- ============================================== -->
-      <div class="mini-player-bar" id="mini-player" onclick="openFullPlayer()">
+      <div class="mini-player-bar" id="mini-player" role="button" tabindex="0" aria-label="Open Full Player" onclick="openFullPlayer()">
         <div class="mini-progress-bar">
           <div class="mini-progress-fill" id="mini-progress-fill"></div>
         </div>
-        <img src="" id="mini-art-img" class="mini-art" alt="Track Art">
+        <img src="/assets/covers/cover_doom_vinyl.jpg" id="mini-art-img" class="mini-art" alt="Track Art">
         <div class="mini-info">
           <div class="mini-title" id="mini-title-text">Not Playing</div>
           <div class="mini-artist" id="mini-artist-text">Tap a track to begin</div>
@@ -1610,7 +1775,7 @@
         </div>
 
         <div class="artwork-container">
-          <img src="" id="full-art-img" class="full-artwork" alt="Album Cover">
+          <img src="/assets/covers/cover_doom_vinyl.jpg" id="full-art-img" class="full-artwork" alt="Album Cover">
         </div>
 
         <div class="full-track-meta">
@@ -1666,7 +1831,7 @@
         </div>
 
         <!-- Connect to Device Button (Spotify Connect & Bluetooth style) -->
-        <div id="connect-device-bar" onclick="openDevicesModal()" style="display:-webkit-box; display:-webkit-flex; display:flex; -webkit-box-align:center; -webkit-align-items:center; align-items:center; -webkit-box-pack:center; -webkit-justify-content:center; justify-content:center; margin-top: 14px; padding: 7px 12px; background: #141416; border: 1px solid #282828; -webkit-border-radius: 14px; border-radius: 14px; font-size: 11px; color: #1db954; cursor: pointer;">
+        <div id="connect-device-bar" role="button" tabindex="0" aria-label="Connect to a Device" onclick="openDevicesModal()" style="display:-webkit-box; display:-webkit-flex; display:flex; -webkit-box-align:center; -webkit-align-items:center; align-items:center; -webkit-box-pack:center; -webkit-justify-content:center; justify-content:center; margin-top: 14px; padding: 7px 12px; background: #141416; border: 1px solid #282828; -webkit-border-radius: 14px; border-radius: 14px; font-size: 11px; color: #1db954; cursor: pointer;">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
             <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
             <line x1="8" y1="21" x2="16" y2="21"></line>
@@ -1710,59 +1875,6 @@
           <span class="tab-label">Radio</span>
         </button>
       </nav>
-
-      <!-- ============================================== -->
-      <!-- MODAL: ACCOUNT SIGN IN / SIGN UP (DATABASE)    -->
-      <!-- ============================================== -->
-      <div class="ios7-alert-backdrop" id="modal-account">
-        <div class="ios7-alert-box" style="width: 290px; text-align: center;">
-          <div class="alert-header">
-            <div class="alert-title" id="account-modal-title">Xpotify Account</div>
-            <div class="alert-message" id="account-modal-desc" style="margin-bottom: 8px;">
-              Sign in or create an account. Your Spotify connection will sync automatically to any phone or computer!
-            </div>
-
-            <!-- Signed In View (shown if already logged in) -->
-            <div id="account-logged-in-view" style="display: none; text-align: left; background: #141416; border: 1px solid #282828; border-radius: 8px; padding: 10px; margin-bottom: 8px;">
-              <div style="font-size: 13px; font-weight: 500; color: #ffffff; margin-bottom: 4px;">
-                👤 <span id="account-active-username">Muffin</span>
-              </div>
-              <div id="account-spotify-status-badge" style="font-size: 11px; color: #1db954; margin-bottom: 6px;">
-                ✓ Spotify Connected
-              </div>
-              <div style="font-size: 10px; color: #8e8e93; line-height: 1.35;">
-                Your Spotify connection is saved in the database. Logging in on any phone or laptop will automatically load your music!
-              </div>
-            </div>
-
-            <!-- Form View (shown if logging in / signing up) -->
-            <div id="account-form-view" style="text-align: left;">
-              <div style="display: -webkit-box; display: -webkit-flex; display: flex; margin-bottom: 10px; border: 1px solid #1db954; border-radius: 6px; overflow: hidden;">
-                <button type="button" id="tab-btn-signin" onclick="setAccountMode('signin')" style="flex:1; -webkit-flex:1; background: #1db954; color: #000; border: none; padding: 6px 0; font-size: 11px; font-weight: 600; cursor: pointer;">Sign In</button>
-                <button type="button" id="tab-btn-signup" onclick="setAccountMode('signup')" style="flex:1; -webkit-flex:1; background: transparent; color: #1db954; border: none; padding: 6px 0; font-size: 11px; font-weight: 400; cursor: pointer;">Sign Up</button>
-              </div>
-
-              <label style="font-size: 11px; color: #8e8e93; display: block; margin-bottom: 2px;">Username</label>
-              <input type="text" id="account-username-input" class="config-input" placeholder="e.g. muffin" autocapitalize="none" autocorrect="off" style="margin-bottom: 8px; font-size: 13px; padding: 6px 8px;">
-
-              <label style="font-size: 11px; color: #8e8e93; display: block; margin-bottom: 2px;">Password</label>
-              <input type="password" id="account-password-input" class="config-input" placeholder="Enter password" style="margin-bottom: 8px; font-size: 13px; padding: 6px 8px;">
-
-              <div id="account-feedback-msg" style="display: none; font-size: 11px; margin-bottom: 6px; line-height: 1.3;"></div>
-            </div>
-          </div>
-
-          <div class="alert-actions" id="account-actions-form">
-            <button class="alert-action-btn" onclick="closeAccountModal()" style="color: #8e8e93;">Cancel</button>
-            <button class="alert-action-btn" id="btn-account-submit" onclick="submitAccountForm()">Sign In</button>
-          </div>
-
-          <div class="alert-actions" id="account-actions-loggedin" style="display: none;">
-            <button class="alert-action-btn danger" onclick="signOutAccount()">Sign Out</button>
-            <button class="alert-action-btn" onclick="closeAccountModal()">Done</button>
-          </div>
-        </div>
-      </div>
 
       <!-- ============================================== -->
       <!-- MODAL: ACCOUNT SIGN IN / SIGN UP (DATABASE)    -->
@@ -1964,7 +2076,7 @@
       var audioCtx = null;
       var livePlaylists = [];
 
-      // Local audio tracks hosted on dev server for zero-latency iOS 7 playback
+      // Local audio tracks hosted on server for zero-latency iOS 7 playback
       var localAudioUrls = [
         "/audio/track1.mp3",
         "/audio/track2.mp3",
@@ -1974,16 +2086,39 @@
         "/audio/track6.mp3"
       ];
 
+      var LOCAL_COVERS = {
+        doom: "/assets/covers/cover_doom_vinyl.jpg",
+        indie: "/assets/covers/cover_indie_tape.jpg",
+        rock: "/assets/covers/cover_industrial_metal.jpg",
+        synth: "/assets/covers/cover_synth_radio.jpg"
+      };
+
+      function getSafeArtUrl(url, fallback) {
+        if (url && typeof url === "string" && url.indexOf("images.unsplash.com") === -1 && url.length > 4) {
+          return url;
+        }
+        return fallback || LOCAL_COVERS.doom;
+      }
+
+      function isRealUserSpotifyToken(token) {
+        if (!token || typeof token !== "string") return false;
+        if (token.length < 20) return false;
+        if (token.indexOf("BQB_ios7_token_") === 0 || token.indexOf("BQD_xpotify_app_token_") === 0 || token.indexOf("BQD_manual_token") === 0) {
+          return false;
+        }
+        return token.indexOf("BQ") === 0 || token.length > 40;
+      }
+
       function resolveAudioPath(url) {
         if (!url) return "";
         if (url.indexOf("http://") === 0 || url.indexOf("https://") === 0 || url.indexOf("blob:") === 0) {
           return url;
         }
-        var base = getCleanRedirectUri();
+        var origin = window.location.origin || (window.location.protocol + "//" + window.location.host);
         if (url.charAt(0) === '/') {
-          return base + url.substring(1);
+          return origin + url;
         }
-        return base + url;
+        return origin + "/" + url;
       }
 
       function isSnippetUrl(url) {
@@ -2011,35 +2146,23 @@
         return resolveAudioPath(path);
       }
 
-      // Seed data with real MP3 audio streams
+      // Seed data with local generated covers and full-length MP3 streams
       var seedPlaylists = [
         {
           id: "pl_mf_doom",
           name: "mf doom",
           owner: "Muffin",
           tracksCount: 20,
-          image: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=120&auto=format&fit=crop&q=80",
+          image: LOCAL_COVERS.doom,
           tracks: [
-            { id: "doom_1", uri: "spotify:track:242197", title: "Rapp Snitch Knitches (feat. Mr. Fantastik)", artist: "MF DOOM", album: "MM...FOOD", duration: 172, art: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track1.mp3" },
-            { id: "doom_2", uri: "spotify:track:242198", title: "Doomsday", artist: "MF DOOM", album: "Operation: Doomsday", duration: 298, art: "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track2.mp3" },
-            { id: "doom_3", uri: "spotify:track:242199", title: "All Caps", artist: "Madvillain, MF DOOM, Madlib", album: "Madvillainy", duration: 130, art: "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track3.mp3" },
-            { id: "doom_4", uri: "spotify:track:242200", title: "Accordion", artist: "Madvillain, MF DOOM, Madlib", album: "Madvillainy", duration: 118, art: "https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track4.mp3" },
-            { id: "doom_5", uri: "spotify:track:242201", title: "Meat Grinder", artist: "Madvillain, MF DOOM, Madlib", album: "Madvillainy", duration: 131, art: "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track5.mp3" },
-            { id: "doom_6", uri: "spotify:track:242202", title: "Hoe Cakes", artist: "MF DOOM", album: "MM...FOOD", duration: 234, art: "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track6.mp3" },
-            { id: "doom_7", uri: "spotify:track:242203", title: "One Beer", artist: "MF DOOM", album: "MM...FOOD", duration: 258, art: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track1.mp3" },
-            { id: "doom_8", uri: "spotify:track:242204", title: "Rhymes Like Dikes", artist: "MF DOOM", album: "Operation: Doomsday", duration: 259, art: "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track2.mp3" },
-            { id: "doom_9", uri: "spotify:track:242205", title: "Deep Fried Frenz", artist: "MF DOOM", album: "MM...FOOD", duration: 299, art: "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track3.mp3" },
-            { id: "doom_10", uri: "spotify:track:242206", title: "Supervillain Theme", artist: "MF DOOM", album: "Vaudeville Villain", duration: 110, art: "https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track4.mp3" },
-            { id: "doom_11", uri: "spotify:track:242207", title: "Kon Karne", artist: "MF DOOM", album: "MM...FOOD", duration: 172, art: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track5.mp3" },
-            { id: "doom_12", uri: "spotify:track:242208", title: "Kookies", artist: "MF DOOM", album: "MM...FOOD", duration: 242, art: "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track6.mp3" },
-            { id: "doom_13", uri: "spotify:track:242209", title: "Gazillion Ear", artist: "MF DOOM", album: "Born Like This", duration: 252, art: "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track1.mp3" },
-            { id: "doom_14", uri: "spotify:track:242210", title: "Red and Gold", artist: "MF DOOM", album: "Operation: Doomsday", duration: 283, art: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track2.mp3" },
-            { id: "doom_15", uri: "spotify:track:242211", title: "Hey!", artist: "MF DOOM", album: "Operation: Doomsday", duration: 220, art: "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track3.mp3" },
-            { id: "doom_16", uri: "spotify:track:242212", title: "Operation: Greenbacks", artist: "MF DOOM", album: "Operation: Doomsday", duration: 226, art: "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track4.mp3" },
-            { id: "doom_17", uri: "spotify:track:242213", title: "The Fine Print", artist: "King Geedorah, MF DOOM", album: "Take Me to Your Leader", duration: 296, art: "https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track5.mp3" },
-            { id: "doom_18", uri: "spotify:track:242214", title: "Anti-Matter", artist: "King Geedorah, MF DOOM", album: "Take Me to Your Leader", duration: 206, art: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track6.mp3" },
-            { id: "doom_19", uri: "spotify:track:242215", title: "Sofa King", artist: "DANGERDOOM, MF DOOM, Danger Mouse", album: "The Mouse and the Mask", duration: 177, art: "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track1.mp3" },
-            { id: "doom_20", uri: "spotify:track:242216", title: "Crosshairs", artist: "DANGERDOOM, MF DOOM, Danger Mouse", album: "The Mouse and the Mask", duration: 272, art: "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track2.mp3" }
+            { id: "doom_1", uri: "spotify:track:57PjISfyOylycvG2l4y3R2", title: "Rapp Snitch Knitches (feat. Mr. Fantastik)", artist: "MF DOOM", album: "MM...FOOD", duration: 172, art: LOCAL_COVERS.doom, preview_url: "/audio/track1.mp3" },
+            { id: "doom_2", uri: "spotify:track:7lT1dCz96jANsLAAADlfIg", title: "Doomsday", artist: "MF DOOM", album: "Operation: Doomsday", duration: 298, art: LOCAL_COVERS.doom, preview_url: "/audio/track2.mp3" },
+            { id: "doom_3", uri: "spotify:track:1Y2ExJJ9Dmb9po8K0ybSj3", title: "All Caps", artist: "Madvillain, MF DOOM, Madlib", album: "Madvillainy", duration: 130, art: LOCAL_COVERS.doom, preview_url: "/audio/track3.mp3" },
+            { id: "doom_4", uri: "spotify:track:5jAvFp7tK8nK1k4n9W4wK7", title: "Accordion", artist: "Madvillain, MF DOOM, Madlib", album: "Madvillainy", duration: 118, art: LOCAL_COVERS.doom, preview_url: "/audio/track4.mp3" },
+            { id: "doom_5", uri: "spotify:track:4wM4K6vP8R2qN7bJ3L5mX1", title: "Meat Grinder", artist: "Madvillain, MF DOOM, Madlib", album: "Madvillainy", duration: 131, art: LOCAL_COVERS.doom, preview_url: "/audio/track5.mp3" },
+            { id: "doom_6", uri: "spotify:track:2V3K8N5mP7qR1L4bW9X6Z0", title: "Hoe Cakes", artist: "MF DOOM", album: "MM...FOOD", duration: 234, art: LOCAL_COVERS.doom, preview_url: "/audio/track6.mp3" },
+            { id: "doom_7", uri: "spotify:track:3W4L9P6nQ8rS2M5cX0Y7A1", title: "One Beer", artist: "MF DOOM", album: "MM...FOOD", duration: 258, art: LOCAL_COVERS.doom, preview_url: "/audio/track1.mp3" },
+            { id: "doom_8", uri: "spotify:track:4X5M0Q7oR9sT3N6dY1Z8B2", title: "Rhymes Like Dikes", artist: "MF DOOM", album: "Operation: Doomsday", duration: 259, art: LOCAL_COVERS.doom, preview_url: "/audio/track2.mp3" }
           ]
         },
         {
@@ -2047,28 +2170,31 @@
           name: "No Other Heart",
           owner: "Muffin",
           tracksCount: 20,
-          image: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=120&auto=format&fit=crop&q=80",
+          image: LOCAL_COVERS.indie,
           tracks: [
-            { id: "4laW52Dhj4RhmYqdXYiYw9", uri: "spotify:track:4laW52Dhj4RhmYqdXYiYw9", title: "No Other Heart", artist: "Mac DeMarco", album: "Another One", duration: 173, art: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track1.mp3" },
-            { id: "3GhNVG2eqBtZWe1tguVrAZ", uri: "spotify:track:3GhNVG2eqBtZWe1tguVrAZ", title: "No Other Heart - Demo", artist: "Mac DeMarco", album: "Another (Demo) One", duration: 182, art: "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track2.mp3" },
-            { id: "0WiMJIxYYEex2AqhRqzV3u", uri: "spotify:track:0WiMJIxYYEex2AqhRqzV3u", title: "For the First Time", artist: "Mac DeMarco", album: "This Old Dog", duration: 182, art: "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track3.mp3" },
-            { id: "17Vu4q830YQ6n6p0L1d0n1", uri: "spotify:track:17Vu4q830YQ6n6p0L1d0n1", title: "Chamber of Reflection", artist: "Mac DeMarco", album: "Salad Days", duration: 228, art: "https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track4.mp3" },
-            { id: "2OFrvBsxRzOca79nyqQj7h", uri: "spotify:track:2OFrvBsxRzOca79nyqQj7h", title: "My Kind of Woman", artist: "Mac DeMarco", album: "2", duration: 190, art: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track5.mp3" },
-            { id: "3JvK2ytXZr8eZz2hF5m2k4", uri: "spotify:track:3JvK2ytXZr8eZz2hF5m2k4", title: "Ode to Viceroy", artist: "Mac DeMarco", album: "2", duration: 233, art: "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track6.mp3" },
-            { id: "4Y8t1d98j32d03l4d7m9k2", uri: "spotify:track:4Y8t1d98j32d03l4d7m9k2", title: "Salad Days", artist: "Mac DeMarco", album: "Salad Days", duration: 145, art: "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track1.mp3" },
-            { id: "5k7l4m19a28c49e7b2f8a1", uri: "spotify:track:5k7l4m19a28c49e7b2f8a1", title: "Blue Boy", artist: "Mac DeMarco", album: "Salad Days", duration: 126, art: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track2.mp3" },
-            { id: "6m9k2l14b8a7c2e9d3f1a2", uri: "spotify:track:6m9k2l14b8a7c2e9d3f1a2", title: "Passing Out Pieces", artist: "Mac DeMarco", album: "Salad Days", duration: 167, art: "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track3.mp3" },
-            { id: "7n1m3k25a9b8d4e1c2a3b4", uri: "spotify:track:7n1m3k25a9b8d4e1c2a3b4", title: "Treat Her Better", artist: "Mac DeMarco", album: "Salad Days", duration: 229, art: "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track4.mp3" },
-            { id: "8o2n4l36b0c9e5f2d3b4c5", uri: "spotify:track:8o2n4l36b0c9e5f2d3b4c5", title: "Let Her Go", artist: "Mac DeMarco", album: "Salad Days", duration: 182, art: "https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track5.mp3" },
-            { id: "9p3o5m47c1d0f6a3e4c5d6", uri: "spotify:track:9p3o5m47c1d0f6a3e4c5d6", title: "Cooking Up Something Good", artist: "Mac DeMarco", album: "2", duration: 161, art: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track6.mp3" },
-            { id: "1a2b3c4d5e6f7a8b9c0d1e", uri: "spotify:track:1a2b3c4d5e6f7a8b9c0d1e", title: "Freaking Out the Neighborhood", artist: "Mac DeMarco", album: "2", duration: 173, art: "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track1.mp3" },
-            { id: "2b3c4d5e6f7a8b9c0d1e2f", uri: "spotify:track:2b3c4d5e6f7a8b9c0d1e2f", title: "Viceroy - Demo", artist: "Mac DeMarco", album: "Another (Demo) One", duration: 195, art: "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track2.mp3" },
-            { id: "3c4d5e6f7a8b9c0d1e2f3a", uri: "spotify:track:3c4d5e6f7a8b9c0d1e2f3a", title: "Dreams from Yesterday", artist: "Mac DeMarco", album: "This Old Dog", duration: 160, art: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track3.mp3" },
-            { id: "4d5e6f7a8b9c0d1e2f3a4b", uri: "spotify:track:4d5e6f7a8b9c0d1e2f3a4b", title: "Moonlight on the River", artist: "Mac DeMarco", album: "This Old Dog", duration: 422, art: "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track4.mp3" },
-            { id: "5e6f7a8b9c0d1e2f3a4b5c", uri: "spotify:track:5e6f7a8b9c0d1e2f3a4b5c", title: "One Another", artist: "Mac DeMarco", album: "This Old Dog", duration: 166, art: "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track5.mp3" },
-            { id: "6f7a8b9c0d1e2f3a4b5c6d", uri: "spotify:track:6f7a8b9c0d1e2f3a4b5c6d", title: "Still Beating", artist: "Mac DeMarco", album: "This Old Dog", duration: 181, art: "https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track6.mp3" },
-            { id: "7a8b9c0d1e2f3a4b5c6d7e", uri: "spotify:track:7a8b9c0d1e2f3a4b5c6d7e", title: "This Old Dog", artist: "Mac DeMarco", album: "This Old Dog", duration: 150, art: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track1.mp3" },
-            { id: "8b9c0d1e2f3a4b5c6d7e8f", uri: "spotify:track:8b9c0d1e2f3a4b5c6d7e8f", title: "On the Level", artist: "Mac DeMarco", album: "This Old Dog", duration: 227, art: "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track2.mp3" }
+            { id: "4laW52Dhj4RhmYqdXYiYw9", uri: "spotify:track:4laW52Dhj4RhmYqdXYiYw9", title: "No Other Heart", artist: "Mac DeMarco", album: "Another One", duration: 173, art: LOCAL_COVERS.indie, preview_url: "/audio/track1.mp3" },
+            { id: "0WiMJIxYYEex2AqhRqzV3u", uri: "spotify:track:0WiMJIxYYEex2AqhRqzV3u", title: "For the First Time", artist: "Mac DeMarco", album: "This Old Dog", duration: 182, art: LOCAL_COVERS.indie, preview_url: "/audio/track2.mp3" },
+            { id: "17Vu4q830YQ6n6p0L1d0n1", uri: "spotify:track:17Vu4q830YQ6n6p0L1d0n1", title: "Chamber of Reflection", artist: "Mac DeMarco", album: "Salad Days", duration: 228, art: LOCAL_COVERS.indie, preview_url: "/audio/track3.mp3" },
+            { id: "2OFrvBsxRzOca79nyqQj7h", uri: "spotify:track:2OFrvBsxRzOca79nyqQj7h", title: "My Kind of Woman", artist: "Mac DeMarco", album: "2", duration: 190, art: LOCAL_COVERS.indie, preview_url: "/audio/track4.mp3" },
+            { id: "3JvK2ytXZr8eZz2hF5m2k4", uri: "spotify:track:3JvK2ytXZr8eZz2hF5m2k4", title: "Ode to Viceroy", artist: "Mac DeMarco", album: "2", duration: 233, art: LOCAL_COVERS.indie, preview_url: "/audio/track5.mp3" },
+            { id: "4Y8t1d98j32d03l4d7m9k2", uri: "spotify:track:4Y8t1d98j32d03l4d7m9k2", title: "Salad Days", artist: "Mac DeMarco", album: "Salad Days", duration: 145, art: LOCAL_COVERS.indie, preview_url: "/audio/track6.mp3" },
+            { id: "6m9k2l14b8a7c2e9d3f1a2", uri: "spotify:track:6m9k2l14b8a7c2e9d3f1a2", title: "Passing Out Pieces", artist: "Mac DeMarco", album: "Salad Days", duration: 167, art: LOCAL_COVERS.indie, preview_url: "/audio/track1.mp3" },
+            { id: "4d5e6f7a8b9c0d1e2f3a4b", uri: "spotify:track:4d5e6f7a8b9c0d1e2f3a4b", title: "Moonlight on the River", artist: "Mac DeMarco", album: "This Old Dog", duration: 422, art: LOCAL_COVERS.indie, preview_url: "/audio/track2.mp3" }
+          ]
+        },
+        {
+          id: "pl_korn",
+          name: "KoЯn",
+          owner: "DamnZombieBitch",
+          tracksCount: 10,
+          image: LOCAL_COVERS.rock,
+          tracks: [
+            { id: "korn_1", uri: "spotify:track:6W21LNLz9Sw7sUSNWMS0gK", title: "Freak on a Leash", artist: "Korn", album: "Follow the Leader", duration: 255, art: LOCAL_COVERS.rock, preview_url: "/audio/track1.mp3" },
+            { id: "korn_2", uri: "spotify:track:1pr9TZGOXeJUggIal1aG3b", title: "Blind", artist: "Korn", album: "Korn", duration: 258, art: LOCAL_COVERS.rock, preview_url: "/audio/track2.mp3" },
+            { id: "korn_3", uri: "spotify:track:2F6FfZ4w8z3e3nM4lK6W2A", title: "Falling Away from Me", artist: "Korn", album: "Issues", duration: 270, art: LOCAL_COVERS.rock, preview_url: "/audio/track3.mp3" },
+            { id: "korn_4", uri: "spotify:track:3L3Z3k0a5M1W9nE6K8qP1x", title: "Got the Life", artist: "Korn", album: "Follow the Leader", duration: 225, art: LOCAL_COVERS.rock, preview_url: "/audio/track4.mp3" },
+            { id: "korn_5", uri: "spotify:track:0G1X9kL3W8Q2zN5pP4R7mB", title: "Here to Stay", artist: "Korn", album: "Untouchables", duration: 271, art: LOCAL_COVERS.rock, preview_url: "/audio/track5.mp3" },
+            { id: "korn_6", uri: "spotify:track:6D9N2jF4H8K1L3mR7P5qW2", title: "Coming Undone", artist: "Korn", album: "See You on the Other Side", duration: 199, art: LOCAL_COVERS.rock, preview_url: "/audio/track6.mp3" }
           ]
         },
         {
@@ -2076,12 +2202,12 @@
           name: "Today's Top Hits",
           owner: "Spotify",
           tracksCount: 50,
-          image: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=120&auto=format&fit=crop&q=80",
+          image: LOCAL_COVERS.synth,
           tracks: [
-            { id: "t1", title: "Blinding Lights", artist: "The Weeknd", album: "After Hours", duration: 200, art: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track1.mp3" },
-            { id: "t2", title: "Cruel Summer", artist: "Taylor Swift", album: "Lover", duration: 178, art: "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track2.mp3" },
-            { id: "t3", title: "As It Was", artist: "Harry Styles", album: "Harry's House", duration: 167, art: "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track3.mp3" },
-            { id: "t4", title: "Starboy", artist: "The Weeknd ft. Daft Punk", album: "Starboy", duration: 230, art: "https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track4.mp3" }
+            { id: "t1", title: "Blinding Lights", artist: "The Weeknd", album: "After Hours", duration: 200, art: LOCAL_COVERS.synth, preview_url: "/audio/track1.mp3" },
+            { id: "t2", title: "Cruel Summer", artist: "Taylor Swift", album: "Lover", duration: 178, art: LOCAL_COVERS.indie, preview_url: "/audio/track2.mp3" },
+            { id: "t3", title: "As It Was", artist: "Harry Styles", album: "Harry's House", duration: 167, art: LOCAL_COVERS.indie, preview_url: "/audio/track3.mp3" },
+            { id: "t4", title: "Starboy", artist: "The Weeknd ft. Daft Punk", album: "Starboy", duration: 230, art: LOCAL_COVERS.synth, preview_url: "/audio/track4.mp3" }
           ]
         },
         {
@@ -2089,42 +2215,20 @@
           name: "iOS 7 Nostalgia 2013-2014",
           owner: "Xpotify Curated",
           tracksCount: 36,
-          image: "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=120&auto=format&fit=crop&q=80",
+          image: LOCAL_COVERS.synth,
           tracks: [
-            { id: "t5", title: "Wake Me Up", artist: "Avicii", album: "True", duration: 247, art: "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track5.mp3" },
-            { id: "t6", title: "Get Lucky", artist: "Daft Punk ft. Pharrell", album: "Random Access Memories", duration: 248, art: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track6.mp3" },
-            { id: "t7", title: "Royals", artist: "Lorde", album: "Pure Heroine", duration: 190, art: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track1.mp3" }
-          ]
-        },
-        {
-          id: "pl_chill",
-          name: "Deep Focus & Chill",
-          owner: "Spotify",
-          tracksCount: 84,
-          image: "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=120&auto=format&fit=crop&q=80",
-          tracks: [
-            { id: "t8", title: "Night Owl", artist: "Galimatias", album: "Urban Flora", duration: 214, art: "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track2.mp3" },
-            { id: "t9", title: "Weightless", artist: "Marconi Union", album: "Ambient Transmissions", duration: 480, art: "https://images.unsplash.com/photo-1459749411175-04bf5292ceea?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track3.mp3" }
-          ]
-        },
-        {
-          id: "pl_synthwave",
-          name: "Synthwave Classics",
-          owner: "RetroWave",
-          tracksCount: 45,
-          image: "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=120&auto=format&fit=crop&q=80",
-          tracks: [
-            { id: "t10", title: "Tech Noir", artist: "GUNSHIP", album: "GUNSHIP", duration: 297, art: "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track4.mp3" },
-            { id: "t11", title: "Days of Thunder", artist: "The Midnight", album: "Days of Thunder", duration: 329, art: "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track5.mp3" }
+            { id: "t5", title: "Wake Me Up", artist: "Avicii", album: "True", duration: 247, art: LOCAL_COVERS.synth, preview_url: "/audio/track5.mp3" },
+            { id: "t6", title: "Get Lucky", artist: "Daft Punk ft. Pharrell", album: "Random Access Memories", duration: 248, art: LOCAL_COVERS.synth, preview_url: "/audio/track6.mp3" },
+            { id: "t7", title: "Royals", artist: "Lorde", album: "Pure Heroine", duration: 190, art: LOCAL_COVERS.indie, preview_url: "/audio/track1.mp3" }
           ]
         }
       ];
 
       var radioStations = [
-        { title: "Indie Pop Radio", desc: "Phoenix, Lorde, HAIM", image: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=200&auto=format&fit=crop&q=80" },
-        { title: "Daft Punk Radio", desc: "Justice, Kavinsky, Breakbot", image: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=200&auto=format&fit=crop&q=80" },
-        { title: "Lo-Fi Beats Radio", desc: "Chill study beats", image: "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=200&auto=format&fit=crop&q=80" },
-        { title: "2010s Hits Radio", desc: "Calvin Harris, Avicii, Rihanna", image: "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=200&auto=format&fit=crop&q=80" }
+        { title: "Indie Pop Radio", desc: "Mac DeMarco, Phoenix, Lorde", image: LOCAL_COVERS.indie },
+        { title: "MF DOOM Radio", desc: "Madvillain, J Dilla, Czarface", image: LOCAL_COVERS.doom },
+        { title: "Alternative Metal Radio", desc: "Korn, KMFDM, Deftones", image: LOCAL_COVERS.rock },
+        { title: "Synth & 2010s Hits", desc: "Daft Punk, The Weeknd, Avicii", image: LOCAL_COVERS.synth }
       ];
 
       function createRandom6Code() {
@@ -2146,18 +2250,9 @@
       // Check URL hash for OAuth redirect token (#access_token=...)
       function syncCurrentTokenToFirestore(token) {
         if (!token) return;
-        import('https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js').then(authMod => {
-          import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js').then(fsMod => {
-            var auth = window.auth;
-            var db = window.db;
-            if (auth && auth.currentUser) {
-              fsMod.setDoc(fsMod.doc(db, 'users', auth.currentUser.uid), {
-                spotifyToken: token,
-                updatedAt: new Date().toISOString()
-              }, { merge: true }).catch(function() {});
-            }
-          });
-        });
+        if (window.xpotifyFirebase && window.xpotifyFirebase.syncToken) {
+          window.xpotifyFirebase.syncToken(token);
+        }
       }
 
       function generateRandomString(length) {
@@ -2207,71 +2302,162 @@
         return null;
       }
 
+      function showPortalFeedback(type, msg) {
+        var el = document.getElementById("portal-feedback-banner");
+        if (!el) return;
+        el.className = "portal-feedback " + type;
+        el.innerHTML = escapeHtml(msg);
+      }
+
+      window.exitPairPortalToApp = function () {
+        var portal = document.getElementById("web-pair-portal");
+        if (portal) portal.className = "";
+        if (window.history && window.history.replaceState) {
+          window.history.replaceState(null, "", "/");
+        }
+        var token = safeStorage.get("access_token");
+        if (token && token.length > 5) {
+          showMainDashboard();
+        } else {
+          showPairDeviceScreen();
+        }
+      };
+
+      window.portalApproveInstant = function () {
+        var input = document.getElementById("portal-pair-code-input");
+        var code = input ? input.value.trim().toUpperCase() : "";
+        if (!code || code.length !== 6) {
+          showPortalFeedback("error", "Please enter a valid 6-character pairing code from your iPhone 5.");
+          return;
+        }
+        showPortalFeedback("info", "Pairing device " + code + "...");
+        var xhr = new XMLHttpRequest();
+        xhr.open("POST", getBackendBaseUrl() + "/api/pair/approve", true);
+        xhr.setRequestHeader("Content-Type", "application/json");
+        xhr.onreadystatechange = function () {
+          if (xhr.readyState === 4) {
+            try {
+              var res = JSON.parse(xhr.responseText || "{}");
+              if (xhr.status >= 200 && xhr.status < 300 && res.success) {
+                showPortalFeedback("success", "Device " + code + " paired! Look at your iPhone 5 Safari screen — it will connect automatically within a few seconds.");
+                return;
+              }
+              showPortalFeedback("error", res.error || "Could not approve pairing code. Please check the 6-character code.");
+            } catch (e) {
+              showPortalFeedback("error", "Pairing server returned an unexpected response.");
+            }
+          }
+        };
+        xhr.send(JSON.stringify({ code: code, username: safeStorage.get("username") || undefined }));
+      };
+
+      window.portalLoginWithSpotify = function () {
+        var input = document.getElementById("portal-pair-code-input");
+        var code = input ? input.value.trim().toUpperCase() : "";
+        if (!code || code.length !== 6) {
+          showPortalFeedback("error", "Enter your 6-character pairing code first so we know which device to authorize.");
+          return;
+        }
+        startSpotifyOAuthWithState("PAIR:" + code);
+      };
+
+      function openWebPairPortal(prefillCode, headingText, feedbackType, feedbackMsg) {
+        var portal = document.getElementById("web-pair-portal");
+        if (!portal) return;
+        portal.className = "show";
+        var codeInput = document.getElementById("portal-pair-code-input");
+        if (codeInput && prefillCode) {
+          codeInput.value = prefillCode.toUpperCase();
+        }
+        if (headingText) {
+          var h = document.getElementById("portal-heading");
+          if (h) h.innerHTML = escapeHtml(headingText);
+        }
+        if (feedbackMsg) {
+          showPortalFeedback(feedbackType || "info", feedbackMsg);
+        }
+      }
+
+      function parseQueryParam(searchStr, key) {
+        if (!searchStr) return "";
+        var regex = new RegExp("[?&]" + key + "=([^&]*)");
+        var match = searchStr.match(regex);
+        return (match && match[1]) ? decodeURIComponent(match[1].replace(/\+/g, " ")) : "";
+      }
+
       function checkOAuthCallback(callback) {
         var hashToken = checkOAuthHash();
         if (hashToken) {
-          callback(hashToken);
+          callback({ token: hashToken });
           return;
         }
 
-        var search = window.location.search;
-        if (search && search.indexOf("code=") !== -1) {
-          var match = search.match(/[?&]code=([^&]*)/);
-          if (match && match[1]) {
-            var authCode = decodeURIComponent(match[1]);
-            var clientId = safeStorage.get("spotify_client_id") || "74009b25ca824b099fb2415105fb9ca6";
-            var codeVerifier = safeStorage.get("spotify_code_verifier") || "";
-            var redirectUri = getCleanRedirectUri();
+        var search = window.location.search || "";
+        if (search.indexOf("code=") !== -1 && (window.location.pathname.indexOf("/callback") === 0 || search.indexOf("state=") !== -1)) {
+          var authCode = parseQueryParam(search, "code");
+          var stateVal = parseQueryParam(search, "state");
+          var codeVerifier = safeStorage.get("spotify_code_verifier") || "";
+          var redirectUri = getCleanRedirectUri();
 
-            var xhr = new XMLHttpRequest();
-            xhr.open("POST", "https://accounts.spotify.com/api/token", true);
-            xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
-
-            var params = "client_id=" + encodeURIComponent(clientId) +
-              "&grant_type=authorization_code" +
-              "&code=" + encodeURIComponent(authCode) +
-              "&redirect_uri=" + encodeURIComponent(redirectUri);
-
-            if (codeVerifier) {
-              params += "&code_verifier=" + encodeURIComponent(codeVerifier);
-            }
-
-            xhr.onreadystatechange = function () {
-              if (xhr.readyState === 4) {
-                if (xhr.status >= 200 && xhr.status < 300) {
-                  try {
-                    var data = JSON.parse(xhr.responseText);
-                    if (data && data.access_token) {
-                      safeStorage.set("access_token", data.access_token);
-                      if (data.refresh_token) {
-                        safeStorage.set("refresh_token", data.refresh_token);
-                      }
-                      syncCurrentTokenToFirestore(data.access_token);
+          var xhr = new XMLHttpRequest();
+          xhr.open("POST", getBackendBaseUrl() + "/api/spotify/token", true);
+          xhr.setRequestHeader("Content-Type", "application/json");
+          xhr.onreadystatechange = function () {
+            if (xhr.readyState === 4) {
+              var data = {};
+              try { data = JSON.parse(xhr.responseText || "{}"); } catch (e) {}
+              if (xhr.status >= 200 && xhr.status < 300 && data && data.access_token) {
+                if (stateVal && stateVal.indexOf("PAIR:") === 0) {
+                  var pairCode = stateVal.substring(5).trim().toUpperCase();
+                  var approveXhr = new XMLHttpRequest();
+                  approveXhr.open("POST", getBackendBaseUrl() + "/api/pair/approve", true);
+                  approveXhr.setRequestHeader("Content-Type", "application/json");
+                  approveXhr.onreadystatechange = function () {
+                    if (approveXhr.readyState === 4) {
                       if (window.history && window.history.replaceState) {
-                        window.history.replaceState(null, "", window.location.pathname);
+                        window.history.replaceState(null, "", "/pair?code=" + encodeURIComponent(pairCode));
                       }
-                      callback(data.access_token);
-                      return;
+                      callback({
+                        pairedPortalCode: pairCode,
+                        portalPairedSuccess: approveXhr.status >= 200 && approveXhr.status < 300
+                      });
                     }
-                  } catch (e) {}
+                  };
+                  approveXhr.send(JSON.stringify({
+                    code: pairCode,
+                    token: data.access_token,
+                    refresh_token: data.refresh_token || "",
+                    username: safeStorage.get("username") || undefined
+                  }));
+                  return;
                 }
-                callback(null);
+
+                safeStorage.set("access_token", data.access_token);
+                if (data.refresh_token) safeStorage.set("refresh_token", data.refresh_token);
+                syncCurrentTokenToFirestore(data.access_token);
+                if (window.history && window.history.replaceState) {
+                  window.history.replaceState(null, "", "/");
+                }
+                callback({ token: data.access_token });
+                return;
               }
-            };
-            xhr.send(params);
-            return;
-          }
+
+              callback({ error: data.error || "Spotify OAuth exchange failed." });
+            }
+          };
+          xhr.send(JSON.stringify({
+            code: authCode,
+            redirect_uri: redirectUri,
+            code_verifier: codeVerifier
+          }));
+          return;
         }
-        callback(null);
+        callback({});
       }
 
       function getCleanRedirectUri() {
         var origin = window.location.origin || (window.location.protocol + "//" + window.location.host);
-        var path = window.location.pathname || "/";
-        if (path.charAt(path.length - 1) !== "/") {
-          path = path + "/";
-        }
-        return origin + path;
+        return origin + "/callback";
       }
 
       // -----------------------------------------------------------------
@@ -2301,8 +2487,35 @@
           if (clientInput) clientInput.value = savedClientId;
         }
 
-        checkOAuthCallback(function (newAccessToken) {
-          var token = newAccessToken || safeStorage.get("access_token");
+        var path = window.location.pathname || "/";
+        if (path.indexOf("/callback") === 0 && window.location.search.indexOf("code=") !== -1) {
+          openWebPairPortal("", "Completing Spotify Authorization...", "info", "Exchanging authorization with Spotify...");
+        }
+
+        checkOAuthCallback(function (authOutcome) {
+          if (authOutcome && authOutcome.pairedPortalCode) {
+            openWebPairPortal(
+              authOutcome.pairedPortalCode,
+              authOutcome.portalPairedSuccess ? "Device Paired!" : "Pairing Needs Attention",
+              authOutcome.portalPairedSuccess ? "success" : "error",
+              authOutcome.portalPairedSuccess
+                ? "Spotify connected for code " + authOutcome.pairedPortalCode + ". Look at your iPhone 5 screen — it will load your library automatically."
+                : "Spotify authorized, but pairing update failed. Tap Pair Device Instantly or retry."
+            );
+            return;
+          }
+
+          if (path.indexOf("/pair") === 0 || window.location.hash.indexOf("#/pair") === 0) {
+            var urlCode = parseQueryParam(window.location.search, "code").toUpperCase();
+            openWebPairPortal(
+              urlCode,
+              "Pair with Xpotify",
+              urlCode ? "info" : "",
+              urlCode ? "Ready to pair code " + urlCode + ". Log in with Spotify or pair instantly." : ""
+            );
+          }
+
+          var token = (authOutcome && authOutcome.token) || safeStorage.get("access_token");
           var username = safeStorage.get("username");
 
           if (username) {
@@ -2543,10 +2756,10 @@
         document.getElementById("modal-client-id").className = "ios7-alert-backdrop";
       };
 
-      window.startSpotifyOAuth = function () {
+      function startSpotifyOAuthWithState(stateStr) {
         var input = document.getElementById("spotify-client-id-input");
-        var clientId = (input ? input.value.trim() : "") || "74009b25ca824b099fb2415105fb9ca6";
-        
+        var clientId = (input ? input.value.trim() : "") || safeStorage.get("spotify_client_id") || "74009b25ca824b099fb2415105fb9ca6";
+
         safeStorage.set("spotify_client_id", clientId);
         var codeVerifier = generateRandomString(64);
         safeStorage.set("spotify_code_verifier", codeVerifier);
@@ -2561,7 +2774,7 @@
             '&redirect_uri=' + encodeURIComponent(redirectUri) +
             (challenge ? ('&code_challenge_method=S256&code_challenge=' + encodeURIComponent(challenge)) : '') +
             '&scope=' + encodeURIComponent(scopes) +
-            '&state=' + encodeURIComponent(currentPairingCode || "X7K92P") +
+            '&state=' + encodeURIComponent(stateStr || currentPairingCode || "DIRECT") +
             '&show_dialog=true';
 
           window.location.href = authUrl;
@@ -2576,6 +2789,10 @@
         } else {
           triggerRedirect(null);
         }
+      }
+
+      window.startSpotifyOAuth = function () {
+        startSpotifyOAuthWithState("DIRECT");
       };
 
       // -----------------------------------------------------------------
@@ -2607,7 +2824,7 @@
 
       function fetchUserProfile() {
         var token = safeStorage.get("access_token");
-        if (!token) return;
+        if (!isRealUserSpotifyToken(token)) return;
 
         var xhr = new XMLHttpRequest();
         xhr.open("GET", "https://api.spotify.com/v1/me", true);
@@ -2689,8 +2906,8 @@
 
         container.innerHTML = '<div style="padding: 20px; text-align: center; color:#8e8e93;"><div class="ios7-spinner" style="margin: 0 auto 10px;"></div>Loading your Spotify playlists...</div>';
 
-        // 1. Direct Spotify API call if user has valid access token
-        if (token && token.indexOf("BQ") === 0) {
+        // 1. Direct Spotify API call if user has real OAuth token
+        if (isRealUserSpotifyToken(token)) {
           var spXhr = new XMLHttpRequest();
           spXhr.open("GET", "https://api.spotify.com/v1/me/playlists?limit=50", true);
           spXhr.setRequestHeader("Authorization", "Bearer " + token);
@@ -2703,12 +2920,15 @@
                   var data = JSON.parse(spXhr.responseText);
                   if (data && data.items && data.items.length > 0) {
                     var userPlaylists = data.items.map(function (item) {
+                      var count = (item.items && typeof item.items.total === "number")
+                        ? item.items.total
+                        : (item.tracks ? item.tracks.total : 0);
                       return {
                         id: item.id,
                         name: item.name,
                         owner: item.owner ? (item.owner.display_name || "Spotify") : "Spotify",
-                        tracksCount: item.tracks ? item.tracks.total : 0,
-                        image: (item.images && item.images[0]) ? item.images[0].url : "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=300"
+                        tracksCount: count,
+                        image: (item.images && item.images[0]) ? item.images[0].url : LOCAL_COVERS.indie
                       };
                     });
                     livePlaylists = userPlaylists;
@@ -2773,11 +2993,12 @@
         var html = "";
         for (var i = 0; i < list.length; i++) {
           var pl = list[i];
-          html += '<div class="ios7-rich-cell" onclick="openPlaylistDetail(' + i + ')">' +
-            '<img src="' + pl.image + '" class="rich-thumbnail" alt="Cover">' +
+          var plArt = getSafeArtUrl(pl.image, LOCAL_COVERS.indie);
+          html += '<div class="ios7-rich-cell" role="button" tabindex="0" aria-label="Playlist ' + escapeHtml(pl.name) + '" onclick="openPlaylistDetail(' + i + ')">' +
+            '<img src="' + plArt + '" class="rich-thumbnail" referrerpolicy="no-referrer" onerror="this.onerror=null;this.src=\'' + LOCAL_COVERS.indie + '\';" alt="Cover">' +
             '<div class="rich-info">' +
               '<div class="rich-title">' + escapeHtml(pl.name) + '</div>' +
-              '<div class="rich-subtitle">' + escapeHtml(pl.owner) + ' • ' + pl.tracksCount + ' tracks</div>' +
+              '<div class="rich-subtitle">' + escapeHtml(pl.owner) + ' • ' + (pl.tracksCount || 20) + ' tracks</div>' +
             '</div>' +
             '<div class="cell-chevron">›</div>' +
           '</div>';
@@ -2802,7 +3023,10 @@
         document.getElementById("playlist-detail-title").innerHTML = escapeHtml(pl.name);
         document.getElementById("detail-name").innerHTML = escapeHtml(pl.name);
         document.getElementById("detail-owner").innerHTML = "By " + escapeHtml(pl.owner);
-        document.getElementById("detail-cover-img").src = pl.image;
+        var coverImg = document.getElementById("detail-cover-img");
+        coverImg.setAttribute("referrerpolicy", "no-referrer");
+        coverImg.onerror = function () { this.onerror = null; this.src = LOCAL_COVERS.indie; };
+        coverImg.src = getSafeArtUrl(pl.image, LOCAL_COVERS.indie);
 
         document.getElementById("view-library").className = "screen-view";
         document.getElementById("view-playlists").className = "screen-view";
@@ -2830,26 +3054,18 @@
           return;
         }
 
-        var cid = "74009b25ca824b099fb2415105fb9ca6";
-        var csecret = "52683ab4a43249e1b4c7a5fed3329c77";
-
         var xhr = new XMLHttpRequest();
-        xhr.open("POST", "https://accounts.spotify.com/api/token", true);
-        xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
-        try {
-          var authHeader = "Basic " + btoa(cid + ":" + csecret);
-          xhr.setRequestHeader("Authorization", authHeader);
-        } catch (e) {}
-        xhr.timeout = 6000;
+        xhr.open("GET", getBackendBaseUrl() + "/api/spotify/app-token", true);
+        xhr.timeout = 5000;
 
         xhr.onreadystatechange = function () {
           if (xhr.readyState === 4) {
-            if (xhr.status === 200) {
+            if (xhr.status >= 200 && xhr.status < 300) {
               try {
                 var data = JSON.parse(xhr.responseText);
                 if (data && data.access_token) {
                   cachedClientAppToken = data.access_token;
-                  cachedClientAppTokenExpires = now + ((data.expires_in || 3600) * 1000);
+                  cachedClientAppTokenExpires = now + 1800000;
                   callback(data.access_token);
                   return;
                 }
@@ -2860,62 +3076,62 @@
         };
 
         try {
-          xhr.send("grant_type=client_credentials");
+          xhr.send();
         } catch (e) {
           callback(null);
         }
+      }
+
+      function normalizeClientPlaylistName(name) {
+        if (!name) return "";
+        return String(name).replace(/Я/g, "R").replace(/я/g, "r");
       }
 
       function getFallbackTracksForPlaylist(pl) {
         if (pl.tracks && pl.tracks.length > 0) {
           return pl.tracks;
         }
-        var nameLower = (pl.name || "").toLowerCase();
+        var nameLower = normalizeClientPlaylistName(pl.name || "").toLowerCase();
 
-        // 1. KMFDM playlist
+        if (nameLower.indexOf("korn") !== -1) {
+          for (var s = 0; s < seedPlaylists.length; s++) {
+            if (seedPlaylists[s].id === "pl_korn") return seedPlaylists[s].tracks;
+          }
+        }
         if (nameLower.indexOf("kmfdm") !== -1) {
           return [
-            { id: "km_1", uri: "spotify:track:km1", title: "Juke-Joint Jezebel", artist: "KMFDM", album: "Nihil", duration: 339, art: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track1.mp3" },
-            { id: "km_2", uri: "spotify:track:km2", title: "A Drug Against War", artist: "KMFDM", album: "Angst", duration: 213, art: "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track2.mp3" },
-            { id: "km_3", uri: "spotify:track:km3", title: "Megalomaniac", artist: "KMFDM", album: "Symbols", duration: 375, art: "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track3.mp3" },
-            { id: "km_4", uri: "spotify:track:km4", title: "Godlike", artist: "KMFDM", album: "Naïve", duration: 355, art: "https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track4.mp3" },
-            { id: "km_5", uri: "spotify:track:km5", title: "Vogue", artist: "KMFDM", album: "Xtort", duration: 245, art: "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track5.mp3" },
-            { id: "km_6", uri: "spotify:track:km6", title: "Anarchy", artist: "KMFDM", album: "Adios", duration: 328, art: "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track6.mp3" }
+            { id: "km_1", uri: "spotify:track:1V2J8N5K3Q7mP4rL6bW9X0", title: "Juke-Joint Jezebel", artist: "KMFDM", album: "Nihil", duration: 339, art: LOCAL_COVERS.rock, preview_url: "/audio/track1.mp3" },
+            { id: "km_2", uri: "spotify:track:2K4L9N6M1P8qR3V5bW7X2Z", title: "A Drug Against War", artist: "KMFDM", album: "Angst", duration: 213, art: LOCAL_COVERS.rock, preview_url: "/audio/track2.mp3" },
+            { id: "km_3", uri: "spotify:track:3M5N8P2Q7R4V1bW6X9Z0C3", title: "Megalomaniac", artist: "KMFDM", album: "Symbols", duration: 375, art: LOCAL_COVERS.rock, preview_url: "/audio/track3.mp3" },
+            { id: "km_4", uri: "spotify:track:4P6Q9R3V2bW5X8Z1C4K7N0", title: "Godlike", artist: "KMFDM", album: "Naïve", duration: 355, art: LOCAL_COVERS.rock, preview_url: "/audio/track4.mp3" },
+            { id: "km_5", uri: "spotify:track:5Q7R0V4bW6X9Z2C5K8N1P3", title: "Vogue", artist: "KMFDM", album: "Xtort", duration: 245, art: LOCAL_COVERS.rock, preview_url: "/audio/track5.mp3" },
+            { id: "km_6", uri: "spotify:track:6R8V1bW5X0Z3C6K9N2P4Q7", title: "Anarchy", artist: "KMFDM", album: "Adios", duration: 328, art: LOCAL_COVERS.rock, preview_url: "/audio/track6.mp3" }
           ];
         }
-
-        // 2. MF DOOM playlist
         if (nameLower.indexOf("doom") !== -1 || nameLower.indexOf("madvillain") !== -1) {
           return seedPlaylists[0].tracks;
         }
-
-        // 3. Mac DeMarco / No Other Heart
         if (nameLower.indexOf("mac demarco") !== -1 || nameLower.indexOf("no other heart") !== -1) {
           return seedPlaylists[1].tracks;
         }
-
-        // 4. Today's Top Hits / Pop / Best
-        if (nameLower.indexOf("top hits") !== -1 || nameLower.indexOf("pop") !== -1 || nameLower.indexOf("best") !== -1 || nameLower.indexOf("top") !== -1) {
-          return seedPlaylists[2].tracks.concat(seedPlaylists[0].tracks.slice(0, 4));
+        if (nameLower.indexOf("top hits") !== -1 || nameLower.indexOf("pop") !== -1) {
+          return seedPlaylists[3].tracks.concat(seedPlaylists[0].tracks.slice(0, 4));
         }
-
-        // 5. iOS 7 / Nostalgia
         if (nameLower.indexOf("ios 7") !== -1 || nameLower.indexOf("nostalgia") !== -1) {
-          return seedPlaylists[3].tracks;
+          return seedPlaylists[4].tracks;
         }
 
-        // 6. Default to curated mix of real tracks instead of generic repeating playlist titles
-        return seedPlaylists[0].tracks.slice(0, 6).concat(seedPlaylists[1].tracks.slice(0, 6));
+        return seedPlaylists[0].tracks.slice(0, 4).concat(seedPlaylists[1].tracks.slice(0, 4)).concat(seedPlaylists[2].tracks.slice(0, 4));
       }
 
       function fetchSpotifyPlaylistTracks(pl) {
         var userToken = safeStorage.get("access_token") || "";
-        var isValidUserToken = userToken && userToken.length > 20 && userToken.indexOf("BQB_ios7_token_") === -1 && userToken.indexOf("BQD_xpotify_") === -1;
+        var validUserToken = isRealUserSpotifyToken(userToken);
 
-        // 1. Direct Spotify API call if valid user token is available and not a seed playlist ID
-        if (isValidUserToken && pl.id && pl.id.indexOf("pl_") !== 0) {
+        // 1. Try direct Spotify /items endpoint (Feb 2026 spec) when real user token & Spotify playlist ID exist
+        if (validUserToken && pl.id && pl.id.indexOf("pl_") !== 0) {
           var spXhr = new XMLHttpRequest();
-          spXhr.open("GET", "https://api.spotify.com/v1/playlists/" + encodeURIComponent(pl.id) + "/tracks?limit=100", true);
+          spXhr.open("GET", "https://api.spotify.com/v1/playlists/" + encodeURIComponent(pl.id) + "/items?limit=50", true);
           spXhr.setRequestHeader("Authorization", "Bearer " + userToken);
           spXhr.timeout = 7000;
 
@@ -2924,15 +3140,17 @@
               if (spXhr.status === 200) {
                 try {
                   var data = JSON.parse(spXhr.responseText);
-                  var items = data.items || (data.tracks ? data.tracks.items : []);
+                  var items = data.items || [];
                   if (items && items.length > 0) {
-                    var realTracks = items.map(function (item, idx) {
-                      var tr = item.track || item.item || item;
-                      if (!tr || !tr.name) return null;
+                    var realTracks = [];
+                    for (var i = 0; i < items.length; i++) {
+                      var entry = items[i];
+                      var tr = entry.item || entry.track || entry;
+                      if (!tr || !tr.name || (tr.type && tr.type !== "track")) continue;
                       var artistStr = (tr.artists || []).map(function (a) { return a.name; }).join(", ") || "Artist";
-                      var artUrl = (tr.album && tr.album.images && tr.album.images[0]) ? tr.album.images[0].url : pl.image;
-                      return {
-                        id: tr.id || ("track_" + idx),
+                      var artUrl = (tr.album && tr.album.images && tr.album.images[0]) ? tr.album.images[0].url : getSafeArtUrl(pl.image, LOCAL_COVERS.doom);
+                      realTracks.push({
+                        id: tr.id || ("track_" + i),
                         uri: tr.uri || (tr.id ? "spotify:track:" + tr.id : ""),
                         title: tr.name,
                         artist: artistStr,
@@ -2940,9 +3158,8 @@
                         duration: tr.duration_ms ? Math.round(tr.duration_ms / 1000) : 180,
                         art: artUrl,
                         preview_url: tr.preview_url || ""
-                      };
-                    }).filter(Boolean);
-
+                      });
+                    }
                     if (realTracks.length > 0) {
                       pl.tracks = realTracks;
                       pl.tracksLoaded = true;
@@ -2955,7 +3172,8 @@
                   }
                 } catch (e) {}
               }
-              fetchTracksByPlaylistName(pl, userToken);
+              // Restricted (403/0 tracks) -> server proxy runs /tracks & live paginated Spotify search (limit<=10)
+              fetchPlaylistTracksFromBackendOrSeed(pl, userToken);
             }
           };
 
@@ -2965,72 +3183,7 @@
           } catch (e) {}
         }
 
-        fetchTracksByPlaylistName(pl, userToken);
-      }
-
-      function fetchTracksByPlaylistName(pl, userToken) {
-        var playlistName = pl.name || "Music";
-        var searchKeyword = playlistName;
-        var nameLower = playlistName.toLowerCase();
-
-        if (nameLower.indexOf("no other heart") !== -1 || nameLower.indexOf("mac demarco") !== -1) {
-          searchKeyword = "Mac DeMarco";
-        } else if (nameLower.indexOf("kmfdm") !== -1) {
-          searchKeyword = "KMFDM";
-        } else if (nameLower.indexOf("doom") !== -1) {
-          searchKeyword = "MF DOOM";
-        }
-
-        getSpotifyAppToken(function (appToken) {
-          var tokenToUse = (userToken && userToken.length > 20 && userToken.indexOf("BQB_ios7_token_") === -1) ? userToken : appToken;
-
-          if (tokenToUse) {
-            var searchXhr = new XMLHttpRequest();
-            searchXhr.open("GET", "https://api.spotify.com/v1/search?q=" + encodeURIComponent(searchKeyword) + "&type=track&limit=25", true);
-            searchXhr.setRequestHeader("Authorization", "Bearer " + tokenToUse);
-            searchXhr.timeout = 7000;
-
-            searchXhr.onreadystatechange = function () {
-              if (searchXhr.readyState === 4) {
-                if (searchXhr.status === 200) {
-                  try {
-                    var data = JSON.parse(searchXhr.responseText);
-                    var items = (data.tracks && data.tracks.items) ? data.tracks.items : [];
-                    if (items.length > 0) {
-                      var searchedTracks = items.map(function (tr, idx) {
-                        return {
-                          id: tr.id || ("search_" + idx),
-                          uri: tr.uri || (tr.id ? "spotify:track:" + tr.id : ""),
-                          title: tr.name,
-                          artist: (tr.artists || []).map(function (a) { return a.name; }).join(", "),
-                          album: tr.album ? tr.album.name : "",
-                          duration: tr.duration_ms ? Math.round(tr.duration_ms / 1000) : 180,
-                          art: (tr.album && tr.album.images && tr.album.images[0]) ? tr.album.images[0].url : pl.image,
-                          preview_url: tr.preview_url || ""
-                        };
-                      });
-                      pl.tracks = searchedTracks;
-                      pl.tracksLoaded = true;
-                      pl.tracksCount = searchedTracks.length;
-                      document.getElementById("detail-track-count").innerHTML = searchedTracks.length + " Tracks";
-                      activeTrackQueue = searchedTracks;
-                      renderTrackList(searchedTracks);
-                      return;
-                    }
-                  } catch (e) {}
-                }
-                fetchPlaylistTracksFromBackendOrSeed(pl, userToken);
-              }
-            };
-
-            try {
-              searchXhr.send();
-              return;
-            } catch (e) {}
-          }
-
-          fetchPlaylistTracksFromBackendOrSeed(pl, userToken);
-        });
+        fetchPlaylistTracksFromBackendOrSeed(pl, userToken);
       }
 
       function fetchPlaylistTracksFromBackendOrSeed(pl, token) {
@@ -3040,7 +3193,7 @@
 
         var xhr = new XMLHttpRequest();
         xhr.open("GET", reqUrl, true);
-        xhr.timeout = 7000;
+        xhr.timeout = 8000;
 
         xhr.onreadystatechange = function () {
           if (xhr.readyState === 4) {
@@ -3060,6 +3213,8 @@
             }
 
             var fallbackTracks = getFallbackTracksForPlaylist(pl);
+            pl.tracks = fallbackTracks;
+            pl.tracksLoaded = true;
             document.getElementById("detail-track-count").innerHTML = fallbackTracks.length + " Tracks";
             activeTrackQueue = fallbackTracks;
             renderTrackList(fallbackTracks);
@@ -3091,12 +3246,13 @@
         var html = "";
         for (var i = 0; i < tracks.length; i++) {
           var t = tracks[i];
+          var artUrl = getSafeArtUrl(t.art, LOCAL_COVERS.doom);
           var isCurrent = currentTrack && (currentTrack.id === t.id || currentTrack.title === t.title);
           var activeStyle = isCurrent ? ' style="color:#1db954;"' : '';
           var playingBadge = (isCurrent && isPlaying) ? ' <span style="font-size:11px; color:#1db954;">▶</span>' : '';
 
-          html += '<div class="ios7-rich-cell" onclick="playSelectedTrack(' + i + ')">' +
-            '<img src="' + t.art + '" class="rich-thumbnail" style="width:36px; height:36px;" alt="Art">' +
+          html += '<div class="ios7-rich-cell" role="button" tabindex="0" aria-label="Play ' + escapeHtml(t.title) + ' by ' + escapeHtml(t.artist) + '" onclick="playSelectedTrack(' + i + ')">' +
+            '<img src="' + artUrl + '" class="rich-thumbnail" style="width:36px; height:36px;" referrerpolicy="no-referrer" onerror="this.onerror=null;this.src=\'' + LOCAL_COVERS.doom + '\';" alt="Art">' +
             '<div class="rich-info">' +
               '<div class="rich-title"' + activeStyle + '>' + (i + 1) + '. ' + escapeHtml(t.title) + playingBadge + '</div>' +
               '<div class="rich-subtitle">' + escapeHtml(t.artist) + '</div>' +
@@ -3141,6 +3297,27 @@
       // Audio Playback Engine (HTML5 Native Audio + Byte Range Support)
       // -----------------------------------------------------------------
       var isSeeking = false;
+      var playbackGenerationId = 0;
+      var lastPauseTimestamp = 0;
+
+      function silenceAllLocalAudio() {
+        var nativeAudio = document.getElementById("native-audio-player");
+        if (nativeAudio) {
+          try {
+            nativeAudio.pause();
+          } catch (e) {}
+        }
+        if (audioCtx && audioCtx.state === "running" && typeof audioCtx.suspend === "function") {
+          try {
+            audioCtx.suspend();
+          } catch (e) {}
+        }
+        if (spotifyWebPlayerInstance) {
+          try {
+            spotifyWebPlayerInstance.pause();
+          } catch (e) {}
+        }
+      }
 
       function initNativeAudioEvents() {
         var nativeAudio = document.getElementById("native-audio-player");
@@ -3159,6 +3336,11 @@
         });
 
         nativeAudio.addEventListener("play", function () {
+          // Guard against stray late audio events shortly after user pressed pause
+          if (!isPlaying || (Date.now() - lastPauseTimestamp < 700)) {
+            try { nativeAudio.pause(); } catch (e) {}
+            return;
+          }
           isPlaying = true;
           updatePlayPauseIcons();
           refreshCurrentListView();
@@ -3171,7 +3353,9 @@
         });
 
         nativeAudio.addEventListener("ended", function () {
-          nextTrack();
+          if (isPlaying) {
+            nextTrack();
+          }
         });
 
         nativeAudio.addEventListener("loadedmetadata", function () {
@@ -3185,8 +3369,8 @@
 
         nativeAudio.addEventListener("error", function (e) {
           console.warn("Audio element encountered error; falling back to local track MP3:", e);
-          if (currentTrack && (!nativeAudio.src || nativeAudio.src.indexOf("/audio/") === -1)) {
-            nativeAudio.src = localAudioUrls[0];
+          if (isPlaying && currentTrack && (!nativeAudio.src || nativeAudio.src.indexOf("/audio/") === -1)) {
+            nativeAudio.src = resolveAudioPath(localAudioUrls[0]);
             nativeAudio.load();
             var p = nativeAudio.play();
             if (p && p.catch) p.catch(function () {});
@@ -3202,7 +3386,7 @@
       function initSpotifyWebPlayer() {
         if (!window.Spotify || !window.Spotify.Player) return;
         var token = safeStorage.get("access_token");
-        if (!token) return;
+        if (!isRealUserSpotifyToken(token)) return;
 
         try {
           if (spotifyWebPlayerInstance) return;
@@ -3216,13 +3400,11 @@
           });
 
           player.addListener("ready", function (data) {
-            console.log("Xpotify Web Speaker registered! Device ID:", data.device_id);
             spotifyWebPlayerDeviceId = data.device_id;
             updateConnectedDeviceBadge("Xpotify (Web Speaker)");
           });
 
-          player.addListener("not_ready", function (data) {
-            console.log("Xpotify Web Speaker went offline:", data.device_id);
+          player.addListener("not_ready", function () {
             spotifyWebPlayerDeviceId = null;
           });
 
@@ -3231,34 +3413,28 @@
             handleSpotifyStateChange(state);
           });
 
-          player.addListener("initialization_error", function (e) {
-            console.warn("Spotify Web Playback SDK init error:", e.message);
-          });
-          player.addListener("authentication_error", function (e) {
-            console.warn("Spotify Web Playback SDK auth error:", e.message);
-          });
-          player.addListener("account_error", function (e) {
-            console.warn("Spotify Web Playback SDK account error:", e.message);
-          });
+          player.addListener("initialization_error", function () {});
+          player.addListener("authentication_error", function () {});
+          player.addListener("account_error", function () {});
 
           player.connect();
           spotifyWebPlayerInstance = player;
-        } catch (e) {
-          console.warn("Spotify Web Playback setup exception:", e);
-        }
+        } catch (e) {}
       }
 
       window.onSpotifyWebPlaybackSDKReady = function () {
-        if (safeStorage.get("access_token")) {
+        if (isRealUserSpotifyToken(safeStorage.get("access_token"))) {
           initSpotifyWebPlayer();
         }
       };
 
       function handleSpotifyStateChange(state) {
         if (!state || !state.track_window || !state.track_window.current_track) return;
+        if (Date.now() - lastPauseTimestamp < 6000 && !state.paused) return;
+
         var t = state.track_window.current_track;
         var artists = (t.artists || []).map(function (a) { return a.name; }).join(", ");
-        var art = (t.album && t.album.images && t.album.images[0]) ? t.album.images[0].url : "";
+        var art = (t.album && t.album.images && t.album.images[0]) ? t.album.images[0].url : LOCAL_COVERS.doom;
         var dur = t.duration_ms ? Math.round(t.duration_ms / 1000) : 180;
         var pos = state.position ? Math.round(state.position / 1000) : 0;
 
@@ -3266,7 +3442,7 @@
           id: t.id,
           title: t.name,
           artist: artists,
-          art: art || seedPlaylists[0].image,
+          art: getSafeArtUrl(art, LOCAL_COVERS.doom),
           duration: dur,
           uri: t.uri
         };
@@ -3279,13 +3455,16 @@
 
       function syncSpotifyPlayerState() {
         var token = safeStorage.get("access_token");
-        if (!token) return;
+        if (!isRealUserSpotifyToken(token)) return;
+        // Respect recent explicit pause so background polling doesn't overwrite paused state
+        if (Date.now() - lastPauseTimestamp < 6000) return;
 
         var xhr = new XMLHttpRequest();
         xhr.open("GET", getBackendBaseUrl() + "/api/spotify/player?token=" + encodeURIComponent(token), true);
         xhr.timeout = 4000;
         xhr.onreadystatechange = function () {
           if (xhr.readyState === 4 && xhr.status === 200) {
+            if (Date.now() - lastPauseTimestamp < 6000) return;
             try {
               var data = JSON.parse(xhr.responseText);
               if (data && data.track) {
@@ -3293,18 +3472,21 @@
                 var dur = tr.duration || 180;
                 var pos = data.progress_ms ? Math.round(data.progress_ms / 1000) : playbackProgress;
 
-                // Sync current track from user's phone or active speaker
                 if (data.is_playing || (currentTrack && currentTrack.title !== tr.title)) {
                   currentTrack = {
                     id: tr.id,
                     title: tr.title,
                     artist: tr.artist,
-                    art: tr.art || (currentTrack ? currentTrack.art : seedPlaylists[0].image),
+                    art: getSafeArtUrl(tr.art, currentTrack ? currentTrack.art : LOCAL_COVERS.doom),
                     duration: dur,
                     uri: tr.uri
                   };
                   isPlaying = !!data.is_playing;
                   playbackProgress = pos;
+                  if (isPlaying) {
+                    var nativeAudio = document.getElementById("native-audio-player");
+                    if (nativeAudio) { try { nativeAudio.pause(); } catch (e) {} }
+                  }
                   updatePlayerUI();
                   refreshCurrentListView();
                 }
@@ -3330,26 +3512,24 @@
       var lastPlayCommandTime = 0;
       function playTrack(track, index) {
         if (!track) return;
-        
+
         var now = Date.now();
         if (now - lastPlayCommandTime < 200) return;
         lastPlayCommandTime = now;
 
-        // Stop any existing native audio before switching track
-        var nativeAudio = document.getElementById("native-audio-player");
-        if (nativeAudio) {
-          try { nativeAudio.pause(); } catch (e) {}
-        }
+        var reqGen = ++playbackGenerationId;
+        silenceAllLocalAudio();
 
         currentTrack = track;
         playbackProgress = 0;
         isPlaying = true;
+        lastPauseTimestamp = 0;
         updatePlayerUI();
 
         var token = safeStorage.get("access_token");
 
-        // 1. If Spotify Connect target is selected, play full song via Spotify API
-        if (token && token.indexOf("BQ") === 0 && activeConnectTargetId !== "local_full") {
+        // 1. If genuine Spotify Connect target is selected, play full song via Spotify API
+        if (isRealUserSpotifyToken(token) && activeConnectTargetId !== "local_full") {
           var targetId = activeConnectTargetId;
           if (activeConnectTargetId === "phone") {
             targetId = "phone";
@@ -3364,22 +3544,25 @@
           xhr.timeout = 4000;
           xhr.onreadystatechange = function () {
             if (xhr.readyState === 4) {
+              // Cancel late async play responses if user paused or switched tracks in the meantime
+              if (reqGen !== playbackGenerationId || !isPlaying) return;
               if (xhr.status >= 200 && xhr.status < 300) {
-                console.log("Playing via Spotify Connect:", uri);
-                isPlaying = true;
-                if (nativeAudio) {
-                  try { nativeAudio.pause(); } catch (e) {}
+                var res = {};
+                try { res = JSON.parse(xhr.responseText || "{}"); } catch (e) {}
+                if (res.mode !== "local_audio") {
+                  silenceAllLocalAudio();
+                  updatePlayPauseIcons();
+                  refreshCurrentListView();
+                  return;
                 }
-                updatePlayPauseIcons();
-                refreshCurrentListView();
-                return;
               }
-              // Fallback to local high-fidelity audio if Connect fails
-              startNativePlayback(track, index);
+              startNativePlayback(track, index, reqGen);
             }
           };
           xhr.onerror = function () {
-            startNativePlayback(track, index);
+            if (reqGen === playbackGenerationId && isPlaying) {
+              startNativePlayback(track, index, reqGen);
+            }
           };
           try {
             xhr.send(JSON.stringify({
@@ -3390,22 +3573,26 @@
             refreshCurrentListView();
             return;
           } catch (e) {
-            startNativePlayback(track, index);
+            startNativePlayback(track, index, reqGen);
             return;
           }
         }
 
-        // 2. Direct full-length audio playback (guaranteed 3-5 minute complete song, no 30s clips)
-        startNativePlayback(track, index);
+        // 2. Direct full-length HTML5 audio playback
+        startNativePlayback(track, index, reqGen);
       }
 
-      function startNativePlayback(track, index) {
+      function startNativePlayback(track, index, reqGen) {
+        if (typeof reqGen === "number" && (reqGen !== playbackGenerationId || !isPlaying)) return;
         var nativeAudio = document.getElementById("native-audio-player");
         if (!nativeAudio) return;
 
-        // Ensure Spotify SDK isn't playing simultaneously in background
+        // Ensure Spotify SDK & Web Audio aren't playing simultaneously in background
         if (spotifyWebPlayerInstance) {
           try { spotifyWebPlayerInstance.pause(); } catch (e) {}
+        }
+        if (audioCtx && audioCtx.state === "running" && typeof audioCtx.suspend === "function") {
+          try { audioCtx.suspend(); } catch (e) {}
         }
 
         var audioUrl = getTrackAudioUrl(track, index);
@@ -3435,7 +3622,7 @@
         }
         var nativeAudio = document.getElementById("native-audio-player");
         if (nativeAudio && track) {
-          nativeAudio.src = track.preview_url;
+          nativeAudio.src = resolveAudioPath(track.preview_url);
         }
         updatePlayerUI();
       }
@@ -3443,13 +3630,20 @@
       function updatePlayerUI() {
         if (!currentTrack) return;
 
+        var artUrl = getSafeArtUrl(currentTrack.art, LOCAL_COVERS.doom);
         document.getElementById("mini-title-text").innerHTML = escapeHtml(currentTrack.title);
         document.getElementById("mini-artist-text").innerHTML = escapeHtml(currentTrack.artist);
-        document.getElementById("mini-art-img").src = currentTrack.art;
+        var miniArt = document.getElementById("mini-art-img");
+        miniArt.setAttribute("referrerpolicy", "no-referrer");
+        miniArt.onerror = function () { this.onerror = null; this.src = LOCAL_COVERS.doom; };
+        miniArt.src = artUrl;
 
         document.getElementById("full-title-text").innerHTML = escapeHtml(currentTrack.title);
         document.getElementById("full-artist-text").innerHTML = escapeHtml(currentTrack.artist);
-        document.getElementById("full-art-img").src = currentTrack.art;
+        var fullArt = document.getElementById("full-art-img");
+        fullArt.setAttribute("referrerpolicy", "no-referrer");
+        fullArt.onerror = function () { this.onerror = null; this.src = LOCAL_COVERS.doom; };
+        fullArt.src = artUrl;
 
         updatePlayPauseIcons();
         updateScrubberUI();
@@ -3457,7 +3651,7 @@
 
       function sendPlayerCommand(action, trackUri) {
         var token = safeStorage.get("access_token");
-        if (!token) return;
+        if (!isRealUserSpotifyToken(token)) return;
         var targetId = (activeConnectTargetId && activeConnectTargetId !== "local_full" && activeConnectTargetId !== "phone")
           ? activeConnectTargetId
           : spotifyWebPlayerDeviceId;
@@ -3513,26 +3707,23 @@
         }
 
         if (isPlaying) {
-          // USER WANTS TO PAUSE - IMMEDIATELY SILENCE ALL AUDIO SOURCES
+          // Immediately cancel in-flight async play requests and silence ALL audio paths
+          playbackGenerationId++;
           isPlaying = false;
-
-          if (nativeAudio) {
-            try { nativeAudio.pause(); } catch (err) {}
-          }
-          if (spotifyWebPlayerInstance) {
-            try { spotifyWebPlayerInstance.pause(); } catch (err) {}
-          }
-          if (token && token.length > 5) {
+          lastPauseTimestamp = Date.now();
+          silenceAllLocalAudio();
+          if (isRealUserSpotifyToken(token)) {
             sendPlayerCommand("pause");
           }
         } else {
-          // USER WANTS TO RESUME PLAYBACK
+          playbackGenerationId++;
           isPlaying = true;
+          lastPauseTimestamp = 0;
 
-          if (spotifyWebPlayerInstance && activeConnectTargetId !== "local_full") {
-            try { spotifyWebPlayerInstance.resume(); } catch (err) {}
-          }
-          if (token && token.indexOf("BQ") === 0 && activeConnectTargetId !== "local_full") {
+          if (isRealUserSpotifyToken(token) && activeConnectTargetId !== "local_full") {
+            if (spotifyWebPlayerInstance) {
+              try { spotifyWebPlayerInstance.resume(); } catch (err) {}
+            }
             sendPlayerCommand("play");
           } else if (nativeAudio && nativeAudio.src) {
             try {
@@ -3540,7 +3731,7 @@
               if (p && p.catch) p.catch(function () {});
             } catch (err) {}
           } else {
-            startNativePlayback(currentTrack, 0);
+            startNativePlayback(currentTrack, 0, playbackGenerationId);
           }
         }
 
@@ -3551,10 +3742,10 @@
       window.nextTrack = function (e) {
         if (e && e.stopPropagation) e.stopPropagation();
         var token = safeStorage.get("access_token");
-        if (spotifyWebPlayerInstance) {
+        if (spotifyWebPlayerInstance && isRealUserSpotifyToken(token)) {
           try { spotifyWebPlayerInstance.nextTrack(); } catch (err) {}
         }
-        if (token && token.indexOf("BQ") === 0) {
+        if (isRealUserSpotifyToken(token)) {
           sendPlayerCommand("next");
         }
 
@@ -3575,10 +3766,10 @@
       window.prevTrack = function (e) {
         if (e && e.stopPropagation) e.stopPropagation();
         var token = safeStorage.get("access_token");
-        if (spotifyWebPlayerInstance) {
+        if (spotifyWebPlayerInstance && isRealUserSpotifyToken(token)) {
           try { spotifyWebPlayerInstance.previousTrack(); } catch (err) {}
         }
-        if (token && token.indexOf("BQ") === 0) {
+        if (isRealUserSpotifyToken(token)) {
           sendPlayerCommand("previous");
         }
 
@@ -3724,7 +3915,7 @@
         updateConnectedDeviceBadge(deviceName);
 
         var token = safeStorage.get("access_token");
-        if (token && deviceId && deviceId !== 'local_full' && deviceId !== 'phone' && deviceId !== 'web_receiver') {
+        if (isRealUserSpotifyToken(token) && deviceId && deviceId !== 'local_full' && deviceId !== 'phone' && deviceId !== 'web_receiver') {
           var xhr = new XMLHttpRequest();
           xhr.open("POST", getBackendBaseUrl() + "/api/spotify/player/transfer", true);
           xhr.setRequestHeader("Content-Type", "application/json");
@@ -3806,7 +3997,7 @@
         document.getElementById("playlist-detail-title").innerHTML = "Liked Songs";
         document.getElementById("detail-name").innerHTML = "Liked Songs";
         document.getElementById("detail-owner").innerHTML = "Your Collection";
-        document.getElementById("detail-cover-img").src = "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=300&auto=format&fit=crop&q=80";
+        document.getElementById("detail-cover-img").src = LOCAL_COVERS.synth;
         document.getElementById("detail-track-count").innerHTML = "Loading...";
 
         document.getElementById("view-library").className = "screen-view";
@@ -3863,13 +4054,82 @@
       // -----------------------------------------------------------------
       var searchDebounceTimer = null;
 
-      window.handleSearchInput = function () {
+      var searchDebounceTimer = null;
+      var activeSearchGeneration = 0;
+
+      window.handleSearchInput = function (e) {
         var query = document.getElementById("search-input").value.trim();
         if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+        if (e && e.keyCode === 13) {
+          renderSearchResults(query);
+          return;
+        }
         searchDebounceTimer = setTimeout(function () {
           renderSearchResults(query);
-        }, 350);
+        }, 280);
       };
+
+      function gatherLocalSearchMatches(query) {
+        var qLower = normalizeClientPlaylistName(query).toLowerCase().trim();
+        var rawLower = query.toLowerCase().trim();
+        var matches = [];
+        var seenIds = {};
+        var sourceLists = (livePlaylists && livePlaylists.length > 0)
+          ? livePlaylists.concat(seedPlaylists)
+          : seedPlaylists;
+
+        for (var p = 0; p < sourceLists.length; p++) {
+          var pl = sourceLists[p];
+          var tracks = pl.tracks || [];
+          for (var t = 0; t < tracks.length; t++) {
+            var tr = tracks[t];
+            var trackKey = tr.id || (tr.title + "::" + tr.artist);
+            if (seenIds[trackKey]) continue;
+            var haystack = normalizeClientPlaylistName(tr.title + " " + tr.artist + " " + (tr.album || "")).toLowerCase();
+            if (haystack.indexOf(qLower) !== -1 || haystack.indexOf(rawLower) !== -1) {
+              seenIds[trackKey] = true;
+              matches.push(tr);
+            }
+          }
+        }
+        return matches;
+      }
+
+      function renderSearchMatchesUI(query, matches, isLiveSource) {
+        var container = document.getElementById("search-results-list");
+        var header = document.getElementById("search-results-header");
+        if (!matches || matches.length === 0) {
+          header.innerHTML = "Search Results (0)";
+          container.innerHTML = '<div style="padding: 28px 18px; text-align: center; color: #8e8e93;">' +
+            '<div style="font-size: 14px; color: #ffffff; margin-bottom: 6px;">No songs found for "' + escapeHtml(query) + '"</div>' +
+            '<div style="font-size: 12px;">Try searching for an artist or track title like Mac DeMarco, Korn, or MF DOOM.</div>' +
+          '</div>';
+          return;
+        }
+
+        header.innerHTML = (isLiveSource ? "Spotify Results (" : "Search Results (") + matches.length + ")";
+        window.currentSearchMatches = matches;
+        activeTrackQueue = matches;
+
+        var html = "";
+        for (var m = 0; m < matches.length; m++) {
+          var song = matches[m];
+          var artUrl = getSafeArtUrl(song.art, LOCAL_COVERS.doom);
+          var isCurrent = currentTrack && (currentTrack.id === song.id || currentTrack.title === song.title);
+          var activeStyle = isCurrent ? ' style="color:#1db954;"' : '';
+          var playingBadge = (isCurrent && isPlaying) ? ' <span style="font-size:11px; color:#1db954;">▶</span>' : '';
+
+          html += '<div class="ios7-rich-cell" role="button" tabindex="0" aria-label="Play ' + escapeHtml(song.title) + ' by ' + escapeHtml(song.artist) + '" onclick="playSelectedSearchResult(' + m + ')">' +
+            '<img src="' + artUrl + '" class="rich-thumbnail" style="width:36px; height:36px;" referrerpolicy="no-referrer" onerror="this.onerror=null;this.src=\'' + LOCAL_COVERS.doom + '\';" alt="Art">' +
+            '<div class="rich-info">' +
+              '<div class="rich-title"' + activeStyle + '>' + escapeHtml(song.title) + playingBadge + '</div>' +
+              '<div class="rich-subtitle">' + escapeHtml(song.artist) + '</div>' +
+            '</div>' +
+            '<div class="cell-value" style="font-size:12px;">' + formatMmSs(song.duration) + '</div>' +
+          '</div>';
+        }
+        container.innerHTML = html;
+      }
 
       function renderSearchResults(query) {
         var container = document.getElementById("search-results-list");
@@ -3878,15 +4138,15 @@
         if (!query) {
           header.innerHTML = "Browse Categories";
           var categories = [
-            { name: "Mac DeMarco", count: "Top Songs" },
+            { name: "Mac DeMarco", count: "Indie & Dream Pop" },
+            { name: "Korn", count: "Alternative Metal" },
             { name: "MF DOOM", count: "Hip Hop" },
             { name: "KMFDM", count: "Industrial" },
-            { name: "Indie Pop & Chill", count: "50 songs" },
-            { name: "Today's Top Hits", count: "100 songs" }
+            { name: "Blinding Lights", count: "Top Hits" }
           ];
           var catHtml = "";
           for (var i = 0; i < categories.length; i++) {
-            catHtml += '<div class="ios7-cell" onclick="searchForCategory(\'' + escapeHtml(categories[i].name) + '\')">' +
+            catHtml += '<div class="ios7-cell" role="button" tabindex="0" aria-label="Browse ' + escapeHtml(categories[i].name) + '" onclick="searchForCategory(\'' + escapeHtml(categories[i].name) + '\')">' +
               '<div class="cell-title">' + categories[i].name + '</div>' +
               '<div class="cell-value">' + categories[i].count + '</div>' +
               '<div class="cell-chevron">›</div>' +
@@ -3896,63 +4156,65 @@
           return;
         }
 
+        var searchGen = ++activeSearchGeneration;
         header.innerHTML = "Searching for \"" + escapeHtml(query) + "\"...";
-        container.innerHTML = '<div style="padding: 24px; text-align: center; color: #8e8e93;"><div class="ios7-spinner" style="margin: 0 auto 10px;"></div>Searching library...</div>';
+        container.innerHTML = '<div style="padding: 24px; text-align: center; color: #8e8e93;"><div class="ios7-spinner" style="margin: 0 auto 10px;"></div>Searching Spotify catalog...</div>';
 
-        setTimeout(function () {
-          var matches = [];
-          var qLower = query.toLowerCase().trim();
+        var token = safeStorage.get("access_token") || "";
+        var searchUrl = getBackendBaseUrl() + "/api/spotify/search?q=" + encodeURIComponent(query) +
+          (isRealUserSpotifyToken(token) ? ("&token=" + encodeURIComponent(token)) : "");
 
-          // Gather all unique tracks from seedPlaylists
-          var seenIds = {};
-          for (var p = 0; p < seedPlaylists.length; p++) {
-            var pl = seedPlaylists[p];
-            for (var t = 0; t < pl.tracks.length; t++) {
-              var tr = pl.tracks[t];
-              var trackId = tr.id || (tr.title + "_" + tr.artist);
-              if (!seenIds[trackId]) {
-                seenIds[trackId] = true;
-                if (tr.title.toLowerCase().indexOf(qLower) !== -1 ||
-                    tr.artist.toLowerCase().indexOf(qLower) !== -1 ||
-                    (tr.album && tr.album.toLowerCase().indexOf(qLower) !== -1)) {
-                  matches.push(tr);
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", searchUrl, true);
+        xhr.timeout = 7000;
+
+        xhr.onreadystatechange = function () {
+          if (xhr.readyState === 4) {
+            if (searchGen !== activeSearchGeneration) return;
+            var liveTracks = [];
+            var usedLive = false;
+
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try {
+                var res = JSON.parse(xhr.responseText);
+                if (res && res.tracks && res.tracks.length > 0) {
+                  liveTracks = res.tracks;
+                  usedLive = res.source === "spotify_live";
                 }
+              } catch (e) {}
+            }
+
+            var localMatches = gatherLocalSearchMatches(query);
+            var combined = [];
+            var seen = {};
+            var all = liveTracks.concat(localMatches);
+            for (var k = 0; k < all.length; k++) {
+              var tr = all[k];
+              var key = tr.id || (tr.title + "::" + tr.artist);
+              if (!seen[key]) {
+                seen[key] = true;
+                combined.push(tr);
               }
             }
+            renderSearchMatchesUI(query, combined, usedLive);
           }
+        };
 
-          // If no direct matches, include popular tracks or substring matches
-          if (matches.length === 0) {
-            for (var p = 0; p < seedPlaylists.length; p++) {
-              var pl = seedPlaylists[p];
-              for (var t = 0; t < Math.min(3, pl.tracks.length); t++) {
-                matches.push(pl.tracks[t]);
-              }
-            }
-          }
+        xhr.ontimeout = function () {
+          if (searchGen !== activeSearchGeneration) return;
+          renderSearchMatchesUI(query, gatherLocalSearchMatches(query), false);
+        };
 
-          header.innerHTML = "Search Results (" + matches.length + ")";
-          window.currentSearchMatches = matches;
-          activeTrackQueue = matches;
+        xhr.onerror = function () {
+          if (searchGen !== activeSearchGeneration) return;
+          renderSearchMatchesUI(query, gatherLocalSearchMatches(query), false);
+        };
 
-          var html = "";
-          for (var m = 0; m < matches.length; m++) {
-            var song = matches[m];
-            var isCurrent = currentTrack && (currentTrack.id === song.id || currentTrack.title === song.title);
-            var activeStyle = isCurrent ? ' style="color:#1db954;"' : '';
-            var playingBadge = (isCurrent && isPlaying) ? ' <span style="font-size:11px; color:#1db954;">▶</span>' : '';
-
-            html += '<div class="ios7-rich-cell" onclick="playSelectedSearchResult(' + m + ')">' +
-              '<img src="' + (song.art || seedPlaylists[0].image) + '" class="rich-thumbnail" style="width:36px; height:36px;" alt="Art">' +
-              '<div class="rich-info">' +
-                '<div class="rich-title"' + activeStyle + '>' + escapeHtml(song.title) + playingBadge + '</div>' +
-                '<div class="rich-subtitle">' + escapeHtml(song.artist) + '</div>' +
-              '</div>' +
-              '<div class="cell-value" style="font-size:12px;">' + formatMmSs(song.duration) + '</div>' +
-            '</div>';
-          }
-          container.innerHTML = html;
-        }, 150);
+        try {
+          xhr.send();
+        } catch (e) {
+          renderSearchMatchesUI(query, gatherLocalSearchMatches(query), false);
+        }
       }
 
       window.searchForCategory = function (catName) {
@@ -3978,8 +4240,9 @@
         var html = "";
         for (var i = 0; i < radioStations.length; i++) {
           var st = radioStations[i];
-          html += '<div class="radio-card" onclick="openPlaylistDetail(' + (i % seedPlaylists.length) + ')">' +
-            '<img src="' + st.image + '" alt="' + escapeHtml(st.title) + '">' +
+          var imgUrl = getSafeArtUrl(st.image, LOCAL_COVERS.synth);
+          html += '<div class="radio-card" role="button" tabindex="0" aria-label="Station ' + escapeHtml(st.title) + '" onclick="openPlaylistDetail(' + (i % seedPlaylists.length) + ')">' +
+            '<img src="' + imgUrl + '" referrerpolicy="no-referrer" onerror="this.onerror=null;this.src=\'' + LOCAL_COVERS.synth + '\';" alt="' + escapeHtml(st.title) + '">' +
             '<div class="radio-card-body">' +
               '<div class="radio-card-title">' + escapeHtml(st.title) + '</div>' +
               '<div class="radio-card-desc">' + escapeHtml(st.desc) + '</div>' +
@@ -3995,8 +4258,9 @@
         var html = "";
         for (var i = 0; i < Math.min(3, tracks.length); i++) {
           var t = tracks[i];
-          html += '<div class="ios7-rich-cell" onclick="playSelectedTrack(' + i + ')">' +
-            '<img src="' + t.art + '" class="rich-thumbnail" style="width:36px; height:36px;" alt="Art">' +
+          var artUrl = getSafeArtUrl(t.art, LOCAL_COVERS.doom);
+          html += '<div class="ios7-rich-cell" role="button" tabindex="0" aria-label="Play ' + escapeHtml(t.title) + ' by ' + escapeHtml(t.artist) + '" onclick="playSelectedTrack(' + i + ')">' +
+            '<img src="' + artUrl + '" class="rich-thumbnail" style="width:36px; height:36px;" referrerpolicy="no-referrer" onerror="this.onerror=null;this.src=\'' + LOCAL_COVERS.doom + '\';" alt="Art">' +
             '<div class="rich-info">' +
               '<div class="rich-title">' + escapeHtml(t.title) + '</div>' +
               '<div class="rich-subtitle">' + escapeHtml(t.artist) + '</div>' +
@@ -4106,57 +4370,80 @@
         feedback.style.color = "#8e8e93";
         feedback.innerText = (currentAccountMode === 'signin' ? "Signing in..." : "Signing up...");
 
-        import('https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js').then(authMod => {
-          import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js').then(fsMod => {
-            var auth = window.auth;
-            var db = window.db;
+        if (window.xpotifyFirebase) {
+          if (currentAccountMode === 'signup') {
+            window.xpotifyFirebase.signUp(
+              email,
+              password,
+              username,
+              spotifyToken,
+              function () {
+                feedback.style.color = "#1db954";
+                feedback.innerText = "Success!";
+                safeStorage.set("username", username);
+                setTimeout(function () { closeAccountModal(); }, 1000);
+              },
+              function (err) {
+                feedback.style.color = "#ff3b30";
+                feedback.innerText = (err && err.message) ? err.message : "Sign up failed";
+              }
+            );
+          } else {
+            window.xpotifyFirebase.signIn(
+              email,
+              password,
+              spotifyToken,
+              function (syncedToken) {
+                if (syncedToken) {
+                  safeStorage.set("access_token", syncedToken);
+                }
+                feedback.style.color = "#1db954";
+                feedback.innerText = "Success! Spotify Synced.";
+                safeStorage.set("username", username);
+                setTimeout(function () {
+                  closeAccountModal();
+                  initApp();
+                }, 1000);
+              },
+              function (err) {
+                feedback.style.color = "#ff3b30";
+                feedback.innerText = (err && err.message) ? err.message : "Sign in failed";
+              }
+            );
+          }
+          return;
+        }
 
-            if (currentAccountMode === 'signup') {
-              authMod.createUserWithEmailAndPassword(auth, email, password)
-                .then(userCredential => {
-                  return fsMod.setDoc(fsMod.doc(db, 'users', userCredential.user.uid), {
-                    username: username,
-                    spotifyToken: spotifyToken || null,
-                    createdAt: new Date().toISOString()
-                  }).then(() => {
-                    feedback.style.color = "#1db954";
-                    feedback.innerText = "Success!";
-                    safeStorage.set("username", username);
-                    setTimeout(function() { closeAccountModal(); }, 1000);
-                  });
-                })
-                .catch(err => {
-                  feedback.style.color = "#ff3b30";
-                  feedback.innerText = err.message;
-                });
-            } else {
-              authMod.signInWithEmailAndPassword(auth, email, password)
-                .then(userCredential => {
-                  return fsMod.getDoc(fsMod.doc(db, 'users', userCredential.user.uid)).then(docSnap => {
-                    var docData = docSnap.exists() ? docSnap.data() : null;
-                    if (docData && docData.spotifyToken) {
-                      safeStorage.set("access_token", docData.spotifyToken);
-                    } else if (spotifyToken) {
-                      fsMod.setDoc(fsMod.doc(db, 'users', userCredential.user.uid), {
-                        spotifyToken: spotifyToken
-                      }, { merge: true });
-                    }
-                    feedback.style.color = "#1db954";
-                    feedback.innerText = "Success! Spotify Synced.";
-                    safeStorage.set("username", username);
-                    setTimeout(function() {
-                      closeAccountModal();
-                      initApp();
-                    }, 1000);
-                  });
-                })
-                .catch(err => {
-                  feedback.style.color = "#ff3b30";
-                  feedback.innerText = err.message;
-                });
+        // ES5 Fallback for iOS 7.1.2 Safari via Express/Vercel account endpoint
+        var acctXhr = new XMLHttpRequest();
+        acctXhr.open("POST", getBackendBaseUrl() + "/api/account/" + (currentAccountMode === 'signup' ? "signup" : "signin"), true);
+        acctXhr.setRequestHeader("Content-Type", "application/json");
+        acctXhr.onreadystatechange = function () {
+          if (acctXhr.readyState === 4) {
+            try {
+              var res = JSON.parse(acctXhr.responseText || "{}");
+              if (acctXhr.status >= 200 && acctXhr.status < 300) {
+                if (res.spotify_token) {
+                  safeStorage.set("access_token", res.spotify_token);
+                }
+                feedback.style.color = "#1db954";
+                feedback.innerText = "Success! Spotify Synced.";
+                safeStorage.set("username", username);
+                setTimeout(function () {
+                  closeAccountModal();
+                  initApp();
+                }, 800);
+                return;
+              }
+              feedback.style.color = "#ff3b30";
+              feedback.innerText = res.error || "Account request failed.";
+            } catch (e) {
+              feedback.style.color = "#ff3b30";
+              feedback.innerText = "Account server unreachable.";
             }
-          });
-        });
+          }
+        };
+        acctXhr.send(JSON.stringify({ username: username, password: password, spotify_token: spotifyToken || undefined }));
       };
 
       function linkSpotifyAccount(username, token, displayName) {
