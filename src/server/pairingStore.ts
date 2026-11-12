@@ -29,6 +29,7 @@ export function loadFirebaseConfig(): FirebaseAppletConfig | null {
   if (cachedFirebaseConfig !== undefined) return cachedFirebaseConfig;
   const candidatePaths = [
     path.resolve(process.cwd(), 'firebase-applet-config.json'),
+    path.resolve(process.cwd(), 'public', 'firebase-applet-config.json'),
     path.resolve(process.cwd(), '..', 'firebase-applet-config.json')
   ];
   for (const filePath of candidatePaths) {
