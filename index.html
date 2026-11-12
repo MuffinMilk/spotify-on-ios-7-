@@ -2872,7 +2872,19 @@
         }
         var nameLower = (pl.name || "").toLowerCase();
 
-        // 1. MF DOOM playlist
+        // 1. KMFDM playlist
+        if (nameLower.indexOf("kmfdm") !== -1) {
+          return [
+            { id: "km_1", uri: "spotify:track:km1", title: "Juke-Joint Jezebel", artist: "KMFDM", album: "Nihil", duration: 339, art: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track1.mp3" },
+            { id: "km_2", uri: "spotify:track:km2", title: "A Drug Against War", artist: "KMFDM", album: "Angst", duration: 213, art: "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track2.mp3" },
+            { id: "km_3", uri: "spotify:track:km3", title: "Megalomaniac", artist: "KMFDM", album: "Symbols", duration: 375, art: "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track3.mp3" },
+            { id: "km_4", uri: "spotify:track:km4", title: "Godlike", artist: "KMFDM", album: "Naïve", duration: 355, art: "https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track4.mp3" },
+            { id: "km_5", uri: "spotify:track:km5", title: "Vogue", artist: "KMFDM", album: "Xtort", duration: 245, art: "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track5.mp3" },
+            { id: "km_6", uri: "spotify:track:km6", title: "Anarchy", artist: "KMFDM", album: "Adios", duration: 328, art: "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=300&auto=format&fit=crop&q=80", preview_url: "/audio/track6.mp3" }
+          ];
+        }
+
+        // 2. MF DOOM playlist
         if (nameLower.indexOf("doom") !== -1 || nameLower.indexOf("madvillain") !== -1) {
           return seedPlaylists[0].tracks;
         }
@@ -2983,9 +2995,14 @@
       function fetchTracksByPlaylistName(pl, userToken) {
         var playlistName = pl.name || "Music";
         var searchKeyword = playlistName;
+        var nameLower = playlistName.toLowerCase();
 
-        if (playlistName.toLowerCase().indexOf("no other heart") !== -1) {
+        if (nameLower.indexOf("no other heart") !== -1 || nameLower.indexOf("mac demarco") !== -1) {
           searchKeyword = "Mac DeMarco";
+        } else if (nameLower.indexOf("kmfdm") !== -1) {
+          searchKeyword = "KMFDM";
+        } else if (nameLower.indexOf("doom") !== -1) {
+          searchKeyword = "MF DOOM";
         }
 
         getSpotifyAppToken(function (appToken) {

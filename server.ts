@@ -378,8 +378,15 @@ app.get('/api/spotify/playlist-tracks', async (req: Request, res: Response) => {
     try {
       const appToken = await getSpotifyAppToken();
       let searchQuery = playlistName || 'MF DOOM';
-      if (playlistName && playlistName.toLowerCase().indexOf('no other heart') !== -1) {
+      const plLower = playlistName.toLowerCase();
+      if (plLower.indexOf('no other heart') !== -1 || plLower.indexOf('mac demarco') !== -1) {
         searchQuery = 'Mac DeMarco';
+      } else if (plLower.indexOf('kmfdm') !== -1) {
+        searchQuery = 'KMFDM';
+      } else if (plLower.indexOf('doom') !== -1) {
+        searchQuery = 'MF DOOM';
+      } else if (plLower.indexOf('top hits') !== -1) {
+        searchQuery = 'Top Pop Hits';
       }
 
       // Page 1: limit 10, offset 0
